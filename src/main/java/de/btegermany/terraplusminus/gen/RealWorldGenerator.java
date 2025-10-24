@@ -21,6 +21,7 @@ import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.Biome;
 import org.bukkit.block.Block;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.generator.BiomeProvider;
 import org.bukkit.generator.BlockPopulator;
 import org.bukkit.generator.ChunkGenerator;
@@ -52,8 +53,16 @@ public class RealWorldGenerator extends ChunkGenerator {
     private final CustomBiomeProvider customBiomeProvider;
 
 
-    private final Material surfaceMaterial;
-    private final Map<String, Material> materialMapping;
+    private final BlockData defaultSurfaceBlock;
+    private final BlockData mountainSurfaceBlock = STONE.createBlockData();
+    private final BlockData underwaterBlock = DIRT.createBlockData();
+    private final Map<Biome, BlockData> defaultBiomeSurfaceBlocks = Map.of(
+            DESERT, SAND.createBlockData(),
+            SNOWY_SLOPES, SNOW_BLOCK.createBlockData(),
+            SNOWY_PLAINS, SNOW_BLOCK.createBlockData(),
+            FROZEN_PEAKS, SNOW_BLOCK.createBlockData()
+    );
+    private final Map<String, BlockData> blockMapping;
 
     private static final Set<Material> GRASS_LIKE_MATERIALS = Set.of(
             GRASS_BLOCK,
@@ -88,11 +97,11 @@ public class RealWorldGenerator extends ChunkGenerator {
                 .softValues()
                 .build(new ChunkDataLoader(this.settings));
 
-        this.surfaceMaterial = ConfigurationHelper.getMaterial(plugin.getConfig(), Properties.SURFACE_MATERIAL, GRASS_BLOCK);
-        this.materialMapping = Map.of(
-                "minecraft:bricks", ConfigurationHelper.getMaterial(plugin.getConfig(), Properties.BUILDING_OUTLINES_MATERIAL, BRICKS),
-                "minecraft:gray_concrete", ConfigurationHelper.getMaterial(plugin.getConfig(), Properties.ROAD_MATERIAL, GRAY_CONCRETE_POWDER),
-                "minecraft:dirt_path", ConfigurationHelper.getMaterial(plugin.getConfig(), Properties.PATH_MATERIAL, MOSS_BLOCK)
+        this.defaultSurfaceBlock = ConfigurationHelper.getMaterialBlockData(plugin.getConfig(), Properties.SURFACE_MATERIAL, GRASS_BLOCK);
+        this.blockMapping = Map.of(
+                "minecraft:bricks", ConfigurationHelper.getMaterialBlockData(plugin.getConfig(), Properties.BUILDING_OUTLINES_MATERIAL, BRICKS),
+                "minecraft:gray_concrete", ConfigurationHelper.getMaterialBlockData(plugin.getConfig(), Properties.ROAD_MATERIAL, GRAY_CONCRETE_POWDER),
+                "minecraft:dirt_path", ConfigurationHelper.getMaterialBlockData(plugin.getConfig(), Properties.PATH_MATERIAL, MOSS_BLOCK)
         );
 
     }
@@ -175,39 +184,31 @@ public class RealWorldGenerator extends ChunkGenerator {
                     continue; // We are not within vertical bounds, continue
                 }
 
-                Material material;
+                BlockData surfaceBlock;
 
                 BlockState state = terraData.surfaceBlock(x, z);
                 if (state != null) {
-                    // Terra--'s OSM config says a feature should be drawn there, let's transform it to respect our config
-                    material = this.materialMapping.get(state.getBlock().toString());
-                    if (material == null) {
+                    // Terra--'s OSM config says a feature should be drawn there, let's transform it to respect Terra+-'s config
+                    surfaceBlock = this.blockMapping.get(state.getBlock().toString());
+                    if (surfaceBlock == null) {
                         // We don't know what material this is, let's respect what the Terra-- configuration says
-                        material = toBukkitBlockData(state).getMaterial();
+                        surfaceBlock = toBukkitBlockData(state);
                     }
                 } else if (groundY >= startMountainHeight) {
-                    material = STONE; // Mountains stare bare
+                    surfaceBlock = mountainSurfaceBlock; // Mountains stay bare
                 } else {
-                    // Fallback to a generic block that matches the biome
+                    // Fallback to a generic block that matches the biome, or to the default block
                     Biome biome = chunkData.getBiome(x, groundY, z);
-                    if (biome == DESERT) {
-                        material = Material.SAND;
-
-                    } else if (biome == SNOWY_SLOPES || biome == SNOWY_PLAINS || biome == FROZEN_PEAKS){
-                        material = SNOW_BLOCK;
-
-                    } else {
-                        material = this.surfaceMaterial;
-                    }
+                    surfaceBlock = this.defaultBiomeSurfaceBlocks.getOrDefault(biome, this.defaultSurfaceBlock);
                 }
 
                 // We don't want grass, snow, and all underwater
                 boolean isUnderWater = groundY + 1 >= maxWorldY || chunkData.getBlockData(x, groundY + 1, z).getMaterial().equals(WATER);
-                if (isUnderWater && GRASS_LIKE_MATERIALS.contains(material)) {
-                    material = DIRT;
+                if (isUnderWater && GRASS_LIKE_MATERIALS.contains(surfaceBlock.getMaterial())) {
+                    surfaceBlock = this.underwaterBlock;
                 }
 
-                chunkData.setBlock(x, groundY, z, material);
+                chunkData.setBlock(x, groundY, z, surfaceBlock);
 
             }
         }

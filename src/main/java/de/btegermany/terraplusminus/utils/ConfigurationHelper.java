@@ -2,6 +2,7 @@ package de.btegermany.terraplusminus.utils;
 
 import de.btegermany.terraplusminus.Terraplusminus;
 import org.bukkit.Material;
+import org.bukkit.block.data.BlockData;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.jetbrains.annotations.NotNull;
 import org.jspecify.annotations.NonNull;
@@ -11,27 +12,30 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import static java.util.Objects.requireNonNullElse;
+
 public final class ConfigurationHelper {
 
     /**
-     * Returns a material from the configuration,
+     * Returns a material's default block data from the configuration,
      * or a default value if the configuration path is either missing or the value is not a valid material identifier.
+     * <br>
+     * This purposefully only supports materials to be defined in the config and not full block data,
+     * in order to maintain full backward compatibility,
+     * and encourage the use of <code>osm.json5</code> instead for complex use cases.
      *
      * @param config        the configuration file to read from
      * @param path          the configuration path to retrieve
      * @param defaultValue  a default value to return if the value is missing from the config or invalid
-     * @return a {@link Material} from the configuration, or {@code defaultValue} as a fallback
+     * @return a {@link Material}'s default {@link BlockData} from the configuration, or {@code defaultValue}'s default {@link BlockData} as a fallback
      */
-    public static Material getMaterial(@NotNull FileConfiguration config, @NotNull String path, Material defaultValue) {
+    public static BlockData getMaterialBlockData(@NotNull FileConfiguration config, @NotNull String path, @NotNull Material defaultValue) {
         String materialName = config.getString(path);
         if (materialName == null) {
-            return defaultValue;
+            return defaultValue.createBlockData();
         }
         Material material = Material.getMaterial(materialName);
-        if (material == null) {
-            return defaultValue;
-        }
-        return material;
+        return requireNonNullElse(material, defaultValue).createBlockData();
     }
 
     private ConfigurationHelper() {
