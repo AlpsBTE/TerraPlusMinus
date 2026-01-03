@@ -3,6 +3,7 @@ package de.btegermany.terraplusminus.gen;
 import net.buildtheearth.terraminusminus.substitutes.BlockState;
 import net.buildtheearth.terraminusminus.substitutes.Identifier;
 import net.buildtheearth.terraminusminus.substitutes.TerraBukkit;
+import net.buildtheearth.terraminusminus.util.http.Disk;
 import net.kyori.adventure.text.logger.slf4j.ComponentLogger;
 import org.bukkit.Material;
 import org.bukkit.block.data.BlockData;
@@ -82,6 +83,13 @@ public class BlockMapper {
             if (material == null) {
                 return this;
             }
+            this.logger.warn(
+                    "Configuration entry {} is set to {}, but is deprecated and may be removed in future versions. " +
+                    "Consider removing it from your configuration and editing {} instead.",
+                    configPath,
+                    material,
+                    Disk.configFile("osm.json5")
+            );
             return this.withStaticMapping(materialId, material);
         }
 
@@ -104,6 +112,10 @@ public class BlockMapper {
         }
 
         public Builder withStaticMapping(@NotNull Identifier materialId, @NotNull Material material) {
+            this.logger.trace(
+                    "Adding material replacement mapping {} -> {}",
+                    materialId, material
+            );
             this.mapping.put(materialId, material.createBlockData());
             return this;
         }

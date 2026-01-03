@@ -99,6 +99,7 @@ public class RealWorldGenerator extends ChunkGenerator {
                 .softValues()
                 .build(new ChunkDataLoader(this.settings));
 
+        // This code is explicitly there for backward compatibility and is legitimate in using the deprecated config keys
         this.blockMapper = BlockMapper.fromPlugin(plugin)
                 .withStaticGenericSurface(GRASS_BLOCK)
                 .withConfiguredGenericSurface(Properties.SURFACE_MATERIAL)  // Overrides the static definition if present

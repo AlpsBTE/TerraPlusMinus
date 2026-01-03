@@ -4,6 +4,7 @@ import lombok.experimental.UtilityClass;
 
 @UtilityClass
 public class Properties {
+
     public static final String CHAT_PREFIX = "prefix";
     public static final String HEIGHT_DATAPACK = "height_datapack";
     private static final String OFFSET_PREFIX = "terrain_offset.";
@@ -19,8 +20,29 @@ public class Properties {
     public static final String PASSTHROUGH_TPLL = "passthrough_tpll";
     public static final String ACTIONBAR_HEIGHT = "height_in_actionbar";
     public static final String SURFACE_MATERIAL = "surface_material";
+
+    /**
+     * Configuration key for what material to replace bricks with when generating surface osm features.
+     *
+     * @deprecated end-users should edit osm.json5 instead of using this
+     */
+    @Deprecated
     public static final String BUILDING_OUTLINES_MATERIAL = "building_outlines_material";
+
+    /**
+     * Configuration key for what material to replace gray concrete with when generating surface osm features.
+     *
+     * @deprecated end-users should edit osm.json5 instead of using this
+     */
+    @Deprecated
     public static final String ROAD_MATERIAL = "road_material";
+
+    /**
+     * Configuration key for what material to replace grass paths with when generating surface osm features.
+     *
+     * @deprecated end-users should edit osm.json5 instead of using this
+     */
+    @Deprecated
     public static final String PATH_MATERIAL = "path_material";
 
     public class NonConfigurable {
@@ -28,4 +50,5 @@ public class Properties {
         public static final String METHOD_SRV = "SERVER";
         public static final String CROSS_TELEPORTATION_CHANNEL = "terraplusminus:teleportbridge";
     }
+
 }

@@ -59,11 +59,8 @@ biomes:
   # Possible values found in "Resource location" on: https://minecraft.wiki/w/Biome#Biome_IDs (use with namespace e.g. minecraft:plains)
   biome: minecraft:plains
 
-# Customize the material, the blocks will be generated with.
+# Customize the default material for the surface
 surface_material: GRASS_BLOCK
-building_outlines_material: BRICKS
-road_material: GRAY_CONCRETE_POWDER
-path_material: MOSS_BLOCK
 # -----------------------------------------------------
 
 # NOTE: Do not change
