@@ -10,8 +10,6 @@ height_datapack: false
 # If enabled, it will show the height of the player in the actionbar.
 height_in_actionbar: false
 
-
-
 # Tpll ------------------------------------------------
 # Set bounds so that players can only tpll within these limits. They will get a message that the area is being worked on by another build team.
 # The option is turned off when all values are 0.0
@@ -23,8 +21,6 @@ max_longitude: 0.0              #          15.665992332846406
 
 # Passthrough tpll to other bukkit plugins. It will not passthrough when it's empty. Type in the name of your plugin. E.g. Your plugin name is vanillatpll you set passthrough_tpll: 'vanillatpll'
 passthrough_tpll: ''
-
-
 
 # Generation -------------------------------------------
 # Offset your section which fits into the world.
@@ -47,10 +43,8 @@ linked_worlds:
     - name: another_world/server                 # e.g. this world/server has a datapack to extend height to 2032. it covers the height section 2033 - 4064 m a.s.l. it has a y-offset of 2032
       offset: -2032
 
-
 # If disabled, tree generation is turned off.
 generate_trees: true
-
 
 biomes:
   # If 'use_dataset' is enabled, biomes will be generated based on: https://en.wikipedia.org/wiki/K%C3%B6ppen_climate_classification.

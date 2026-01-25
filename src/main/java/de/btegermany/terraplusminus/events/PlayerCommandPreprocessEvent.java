@@ -14,7 +14,7 @@ public class PlayerCommandPreprocessEvent implements Listener {
     @EventHandler
     public void onCommand(@NotNull org.bukkit.event.player.PlayerCommandPreprocessEvent command) {
         if (command.getMessage().startsWith("/tpll")) {
-            command.setMessage(pluginName + ": " + command.getMessage().substring(1));
+            command.setMessage(pluginName + ":" + command.getMessage().substring(1));
         }
     }
 }

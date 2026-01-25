@@ -1,6 +1,5 @@
-![](https://i.imgur.com/XKVkhH1.png)
+# ![](https://i.imgur.com/XKVkhH1.png)
 
-# TerraPlusMinus
 [![Build Terra+-](https://github.com/Build-the-Earth-Germany/terraplusminus/actions/workflows/maven.yml/badge.svg)](https://github.com/Build-the-Earth-Germany/terraplusminus/actions/workflows/maven.yml)
 [![Quality Gate Status](https://sonarqube.app.k8s.bteger.dev/api/project_badges/measure?project=BTE-Germany_TerraPlusMinus_776220d7-94a3-47ab-a1af-0f299952ab48&metric=alert_status&token=sqb_697251798da319e35b695e4fd1da188ff4e3336b)](https://sonarqube.app.k8s.bteger.dev/dashboard?id=BTE-Germany_TerraPlusMinus_776220d7-94a3-47ab-a1af-0f299952ab48)
 [![GitHub license](https://badgen.net/github/license/Build-the-Earth-Germany/terraplusminus)](https://github.com/Build-the-Earth-Germany/terraplusminus/blob/master/LICENSE)
@@ -8,26 +7,8 @@
 [![Discord](https://img.shields.io/discord/692825222373703772.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/GkSxGTYaAJ)
 ![https://github.com/buildtheearth](https://go.buildtheearth.net/community-shield)
 
-* Supported Minecraft-Versions: **Paper 1.20.6 - 1.21**: [Download here](https://github.com/BTE-Germany/TerraPlusMinus/releases)
-
-* *Legacy version (for older Minecraft-Versions Spigot 1.18 - 1.20.4): [Legacy-Version 1.3.3](https://github.com/BTE-Germany/TerraPlusMinus/releases/tag/v1.3.3)*
-
-
-
-<!-- TABLE OF CONTENTS -->
-# Table of Contents
-<details open="open">
-  <summary>Table of Contents</summary>
-  <ol>
-    <li><a href="#features">Features</a></li>
-    <li><a href="#images">Images</a></li>
-    <li><a href="#commands-and-permissions">Commands and Permissions</a></li>
-    <li><a href="#installation">Installation</a></li>
-    <li><a href="#config">Config</a></li>
-    <li><a href="#dependencies">Dependencies</a></li>
-  </ol>
-</details>
-
+* Supported Minecraft-Versions are mentioned on the Release
+  itself: [Releases](https://github.com/BTE-Germany/TerraPlusMinus/releases)
 
 # Features
 
@@ -46,22 +27,18 @@ TerraPlusMinus is a plugin which generates the real world terrain and outlines i
 # Images
 
 World generation up to 2032 meters above sea level:
-
 ![](https://i.imgur.com/DE4aAhk.jpg)
 
 Biome generation (including sand in deserts):
+![](https://lh3.googleusercontent.com/d/1F2T5Stl91UPopzNSVaJ36DPa51Is-47G=w1000)
 
-![](https://cdn.discordapp.com/attachments/1023664488735576165/1096055054248718447/2023-04-13_14.48.58.png?width=1329&height=702)
-
-Extended Render Distance with [Distant Horizons](https://www.curseforge.com/minecraft/mc-mods/distant-horizons):
-
-![](https://media.discordapp.net/attachments/795314415816933427/950796277971554324/2022-03-08_17.42.16.png?width=1329&height=702)
+Extended Render Distance with [Distant Horizons](https://modrinth.com/mod/distanthorizons):
+![](https://lh3.googleusercontent.com/d/1mOFhplVCM_T7Qie66GjHyXuBiSOR_EJk=w1000)
 
 Custom Tree Generation:
-
-![](https://media.discordapp.net/attachments/1023664488735576165/1096052591185625139/2023-04-13_14.37.00.png?width=1329&height=702)
-![](https://media.discordapp.net/attachments/1023664488735576165/1096052591877701732/2023-04-13_14.38.31.png?width=1329&height=702)
-![](https://media.discordapp.net/attachments/1023664488735576165/1096052592997564466/2023-04-13_14.41.07.png?width=1330&height=702)
+![](https://lh3.googleusercontent.com/d/1usu42tN0bnZFAK8UN-fBlONMRVVRqzYg=w1000)
+![](https://lh3.googleusercontent.com/d/1hjEWDo73wcRw04pEgQMeZzWDzfxyKn4G=w1000)
+![](https://lh3.googleusercontent.com/d/1il5NFR--NKFjcSxDAV9iD_9N7YMOJoeb=w1000)
 
 # Commands and Permissions
 
@@ -115,75 +92,7 @@ exec java -jar --add-exports=java.desktop/sun.awt.image=ALL-UNNAMED server-execu
 
 # Config
 
-Standard-Config:
-```
-# The prefix is written in front of every message that is sent to the chat by the plugin.
-prefix: '§2§lT+- §8» '
-
-# If disabled, the plugin will log every fetched data to the console
-reduced_console_messages: true
-
-# If this option is enabled, the plugin will copy a datapack with the name 'world-height-datapack.zip' to the world directory, which expands the world to the maximum possibly with a datapack 2032.
-height_datapack: false
-
-# If enabled, it will show the height of the player in the actionbar.
-height_in_actionbar: false
-
-
-
-# Tpll ------------------------------------------------
-# Set bounds so that players can only tpll within these limits. They will get a message that the area is being worked on by another build team.
-# The option is turned off when all values are 0.0
-# -----------------------------------------------------
-min_latitude: 0.0               # Example: 46.94694079137405
-max_latitude: 0.0               #          55.337721930180116
-min_longitude: 0.0              #          1.9049932813372725
-max_longitude: 0.0              #          15.665992332846406
-
-# Passthrough tpll to other bukkit plugins. It will not passthrough when it's empty. Type in the name of your plugin. E.g. Your plugin name is vanillatpll you set passthrough_tpll: 'vanillatpll'
-passthrough_tpll: ''
-
-
-
-# Generation -------------------------------------------
-# Offset your section which fits into the world.
-terrain_offset:
-  x: 0
-  y: 0
-  z: 0
-
-# Linked worlds ---------------------------------------
-# If the height limit in this world/server is not enough, other worlds/servers can be linked to generate higher or lower sections
-linked_worlds:
-  enabled: false
-  method: 'SERVER'                         # 'SERVER' or 'MULTIVERSE'
-  # if method = MULTIVERSE -> world_name, y-offset
-  worlds:
-    - name: another_world/server          # e.g. this world/server has a datapack to extend height to 2032. it covers the height section (-2032) - (-1) m a.s.l. it has a y-offset of -2032.
-      offset: 2032
-    - name: current_world/server                 # do not change! e.g. this world/server has a datapack to extend height to 2032. it covers the height section 0 - 2032 m a.s.l.
-      offset: 0
-    - name: another_world/server                 # e.g. this world/server has a datapack to extend height to 2032. it covers the height section 2033 - 4064 m a.s.l. it has a y-offset of 2032
-      offset: -2032
-
-
-# If disabled, tree generation is turned off.
-generate_trees: true
-
-# The biomes will be generated with https://en.wikipedia.org/wiki/K%C3%B6ppen_climate_classification.
-# If turned off, everything will be plains biome.
-different_biomes: true
-
-# Customize the material, the blocks will be generated with.
-surface_material: GRASS_BLOCK
-building_outlines_material: BRICKS
-road_material: GRAY_CONCRETE_POWDER
-path_material: MOSS_BLOCK
-# -----------------------------------------------------
-
-# NOTE: Do not change
-config_version: 1.4
-```
+For our config.yml please see [here](./src/main/resources/config.yml)
 
 # Dependencies
 
