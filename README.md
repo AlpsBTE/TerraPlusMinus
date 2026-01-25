@@ -63,32 +63,13 @@ worlds:
     generator: Terraplusminus
 ```
 
-3. Add `--add-exports=java.desktop/sun.awt.image=ALL-UNNAMED` to your jvm arguments in the start file. It should look
-   like this:
+3. Start your server
 
-Windows `start.bat` with:
+*Now your world is from -64 to 320, if you need more height, go to step 5.*
 
-```
-@ECHO OFF
-java -jar --add-exports=java.desktop/sun.awt.image=ALL-UNNAMED server-executable-name.jar
-pause
-```
+4. (Optional) If you only plan to use Minecraft Vanilla heights from -64 to 320, but e.g. your city is on height 500 you can set `y: -300` in the `terrain_offset` category in the config.yml to offset your section which fits into the world and restart your server.
 
-Or Linux/Mac `start.sh` with:
-
-```
-#!/bin/sh
-cd "$(dirname "$0")"
-exec java -jar --add-exports=java.desktop/sun.awt.image=ALL-UNNAMED server-executable-name.jar
-```
-
-4. Start your server
-
-*Now your world is from -64 to 320, if you need more height, go to step 6.*
-
-5. (Optional) If you only plan to use Minecraft Vanilla heights from -64 to 320, but e.g. your city is on height 500 you can set `y: -300` in the `terrain_offset` category in the config.yml to offset your section which fits into the world and restart your server.
-
-6. (Optional) Use a datapack to expand your world height. You can set `height_datapack` in config.yml to`true` and restart your server. It will automaticly copy a datapack (with maximum world height possibly with a datapack) into your world folder.
+5. (Optional) Use a datapack to expand your world height. You can set `height_datapack` in config.yml to`true` and restart your server. It will automaticly copy a datapack (with maximum world height possibly with a datapack) into your world folder.
 
 # Config
 
