@@ -1,4 +1,4 @@
-name: Build and Analyze Terra+-
+name: Build any Analyze Terra+-
 
 on:
   push:
@@ -6,48 +6,40 @@ on:
   pull_request:
     branches: [ main ]
 
+
 jobs:
   build:
     name: Build and analyze
     runs-on: ubuntu-latest
-
+    
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           java-version: 21
-          distribution: temurin
-
+          distribution: 'temurin'
       - name: Cache SonarQube packages
         uses: actions/cache@v4
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
-
+          restore-keys: ${{ runner.os }}-sonar
       - name: Cache Maven packages
         uses: actions/cache@v4
         with:
           path: ~/.m2
           key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
           restore-keys: ${{ runner.os }}-m2
-
-      - name: Build with Maven
-        run: mvn -B clean package
-
-      - name: Sonar analysis
-        run: mvn -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar \
-          -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
-          -Dsonar.token=${{ secrets.SONAR_TOKEN }} \
-          -Dsonar.organization=TON_ORG_ID \
-          -Dsonar.projectKey=BTE-Germany_TerraPlusMinus_776220d7-94a3-47ab-a1af-0f299952ab48 \
-          -Dsonar.projectName=TerraPlusMinus
-
-      - name: Upload artifact
+      - name: Build and analyze
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: mvn -B verify org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=BTE-Germany_TerraPlusMinus_776220d7-94a3-47ab-a1af-0f299952ab48 -Dsonar.projectName='TerraPlusMinus'
+      - name: Upload a Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: terraplusminus
+          name: artifact-${{ matrix.runs-on }}
           path: target/terraplusminus*.jar
