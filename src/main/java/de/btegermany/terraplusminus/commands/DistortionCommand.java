@@ -26,13 +26,6 @@ public class DistortionCommand implements BasicCommand {
             return;
         }
 
-        if (!player.hasPermission("t+-.distortion")) {
-            player.sendMessage(
-                    Component.text("No permission for /distortion", NamedTextColor.RED)
-            );
-            return;
-        }
-
         World world = player.getWorld();
         ChunkGenerator generator = world.getGenerator();
 
