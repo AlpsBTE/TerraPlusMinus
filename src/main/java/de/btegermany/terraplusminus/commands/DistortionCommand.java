@@ -14,8 +14,6 @@ import org.jetbrains.annotations.NotNull;
 
 public class DistortionCommand implements BasicCommand {
 
-    private static final double DEFAULT_D = 1E-7;
-
     @Override
     public void execute(@NotNull CommandSourceStack stack, String @NotNull [] args) {
 
@@ -50,11 +48,7 @@ public class DistortionCommand implements BasicCommand {
 
         try {
             double[] geo = projection.toGeo(x, z);
-            double[] tissot = projection.tissot(
-                    geo[0],
-                    geo[1],
-                    DEFAULT_D
-            );
+            double[] tissot = projection.tissot(geo[0], geo[1]);
 
             /*
              * tissot[] meaning:
