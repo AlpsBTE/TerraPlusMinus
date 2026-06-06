@@ -7,7 +7,7 @@
 [![Discord](https://img.shields.io/discord/692825222373703772.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/GkSxGTYaAJ)
 ![https://github.com/buildtheearth](https://go.buildtheearth.net/community-shield)
 
-* Supported Minecraft-Versions are mentioned on the Release
+* Supported Minecraft-Versions are mentioned on the Releases
   itself: [Releases](https://github.com/BTE-Germany/TerraPlusMinus/releases)
 
 # Features
