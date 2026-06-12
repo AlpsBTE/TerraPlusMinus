@@ -45,6 +45,11 @@ public class Properties {
     @Deprecated
     public static final String PATH_MATERIAL = "path_material";
 
+    public static final String SWISS_BUILDINGS_ENABLED = "swiss_buildings.enabled";
+    public static final String SWISS_BUILDINGS_DIRECTORY = "swiss_buildings.directory";
+    public static final String SWISS_BUILDINGS_OUTLINE_MATERIAL = "swiss_buildings.outline_material";
+    public static final String SWISS_BUILDINGS_INTERIOR_MATERIAL = "swiss_buildings.interior_material";
+
     public class NonConfigurable {
         public static final String METHOD_MV = "MULTIVERSE";
         public static final String METHOD_SRV = "SERVER";
