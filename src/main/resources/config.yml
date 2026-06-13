@@ -55,7 +55,29 @@ biomes:
 
 # Customize the default material for the surface
 surface_material: GRASS_BLOCK
+
+# Swiss buildings ---------------------------------------
+# If enabled, the plugin will load highly accurate Swiss building footprints from
+# preprocessed tiles and draw them as surface blocks instead of the generic OSM outlines.
+# This only affects Switzerland and Liechtenstein.
+# The tile directory needs to be inside the plugin folder.
+swiss_buildings:
+  enabled: true
+  directory: swiss_buildings
+  outline_material: minecraft:stone_bricks
+  interior_material: minecraft:clay
+
+# Swiss buildings 3D ----------------------------------
+# If enabled, the /generatebuilding command can place 3D building shells
+# from the preprocessed SwissBuildings3D dataset using FastAsyncWorldEdit.
+# The tile directory needs to be inside the plugin folder.
+swiss_buildings_3d:
+  enabled: true
+  directory: swiss_buildings_3d
+  material: minecraft:stone
+  radius: 10.0
+
 # -----------------------------------------------------
 
 # NOTE: Do not change
-config_version: 1.5
+config_version: 1.6

@@ -7,10 +7,16 @@ import de.btegermany.terraplusminus.gen.tree.TreePopulator;
 import de.btegermany.terraplusminus.utils.Properties;
 import lombok.Getter;
 import net.buildtheearth.terraminusminus.generator.CachedChunkData;
+import de.btegermany.terraplusminus.gen.swiss.SwissBuildingBaker;
+import de.btegermany.terraplusminus.gen.swiss.SwissTLM3DDataset;
 import net.buildtheearth.terraminusminus.generator.ChunkDataLoader;
+import net.buildtheearth.terraminusminus.generator.EarthGeneratorPipelines;
 import net.buildtheearth.terraminusminus.generator.EarthGeneratorSettings;
+import net.buildtheearth.terraminusminus.generator.GeneratorDatasets;
+import net.buildtheearth.terraminusminus.generator.data.IEarthDataBaker;
 import net.buildtheearth.terraminusminus.projection.GeographicProjection;
 import net.buildtheearth.terraminusminus.projection.transform.OffsetProjectionTransform;
+import net.buildtheearth.terraminusminus.substitutes.BlockState;
 import net.buildtheearth.terraminusminus.substitutes.ChunkPos;
 import net.buildtheearth.terraminusminus.util.http.Http;
 import org.bukkit.HeightMap;
@@ -27,6 +33,7 @@ import org.bukkit.generator.WorldInfo;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -94,10 +101,40 @@ public class RealWorldGenerator extends ChunkGenerator {
         this.settings = settings.withProjection(projection);
 
         this.customBiomeProvider = new CustomBiomeProvider(projection);
+
+        // Build datasets and bakers
+        Map<String, Object> datasetsMap = new HashMap<>(EarthGeneratorPipelines.datasets(this.settings));
+        List<IEarthDataBaker<?>> bakerList = new ArrayList<>(
+                Arrays.asList(EarthGeneratorPipelines.dataBakers(this.settings))
+        );
+
+        if (plugin.getConfig().getBoolean(Properties.SWISS_BUILDINGS_ENABLED)) {
+            String outlineMaterial = plugin.getConfig().getString(Properties.SWISS_BUILDINGS_OUTLINE_MATERIAL, "minecraft:stone_bricks");
+            String interiorMaterial = plugin.getConfig().getString(Properties.SWISS_BUILDINGS_INTERIOR_MATERIAL, "minecraft:clay");
+            BlockState outlineBlock = BlockState.parse(outlineMaterial);
+            BlockState interiorBlock = BlockState.parse(interiorMaterial);
+
+            Path swissDir = plugin.getDataFolder().toPath().resolve(plugin.getConfig().getString(Properties.SWISS_BUILDINGS_DIRECTORY, "swiss_buildings"));
+
+            if (java.nio.file.Files.exists(swissDir)) {
+                SwissTLM3DDataset swissTlm3d = new SwissTLM3DDataset(swissDir, outlineBlock, interiorBlock, this.settings.projection());
+                datasetsMap.put(SwissBuildingBaker.KEY_DATASET_SWISS_BUILDINGS, swissTlm3d);
+
+                // Append Swiss baker after all default bakers (after OSMBaker so it overwrites OSM buildings)
+                bakerList.add(new SwissBuildingBaker());
+                plugin.getComponentLogger().info("Swiss building dataset enabled: {}", swissDir);
+            } else {
+                plugin.getComponentLogger().warn("Swiss buildings are enabled but directory '{}' does not exist. Falling back to OSM only.", swissDir);
+            }
+        }
+
+        GeneratorDatasets datasets = new GeneratorDatasets(datasetsMap, this.settings.projection());
+
         this.cache = CacheBuilder.newBuilder()
                 .expireAfterAccess(5L, TimeUnit.MINUTES)
                 .softValues()
-                .build(new ChunkDataLoader(this.settings));
+                .maximumSize(256)
+                .build(new ChunkDataLoader(datasets, bakerList.toArray(new IEarthDataBaker[0])));
 
         // This code is explicitly there for backward compatibility and is legitimate in using the deprecated config keys
         this.blockMapper = BlockMapper.fromPlugin(plugin)

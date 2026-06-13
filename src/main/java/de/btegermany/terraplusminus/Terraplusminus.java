@@ -1,6 +1,10 @@
 package de.btegermany.terraplusminus;
 
+import static java.lang.String.format;
+import static net.daporkchop.lib.common.util.PValidation.checkState;
+
 import de.btegermany.terraplusminus.commands.DistortionCommand;
+import de.btegermany.terraplusminus.commands.GenerateBuildingCommand;
 import de.btegermany.terraplusminus.commands.OffsetCommand;
 import de.btegermany.terraplusminus.commands.TpllCommand;
 import de.btegermany.terraplusminus.commands.WhereCommand;
@@ -10,20 +14,20 @@ import de.btegermany.terraplusminus.events.PlayerMoveEvent;
 import de.btegermany.terraplusminus.events.PluginMessageEvent;
 import de.btegermany.terraplusminus.gen.RealWorldGenerator;
 import de.btegermany.terraplusminus.utils.*;
-
 import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.plugin.configuration.PluginMeta;
 import io.papermc.paper.plugin.lifecycle.event.LifecycleEventManager;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
-
+import java.io.*;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
 import lombok.Getter;
 import lombok.Setter;
-
 import net.buildtheearth.terraminusminus.TerraConfig;
 import net.buildtheearth.terraminusminus.TerraConstants;
 import net.buildtheearth.terraminusminus.util.http.Disk;
 import net.buildtheearth.terraminusminus.util.http.Http;
-
 import org.bstats.bukkit.Metrics;
 import org.bukkit.Bukkit;
 import org.bukkit.World;
@@ -38,14 +42,6 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
-
-import java.io.*;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Locale;
-
-import static java.lang.String.format;
-import static net.daporkchop.lib.common.util.PValidation.checkState;
 
 public final class Terraplusminus extends JavaPlugin implements Listener {
 
@@ -370,6 +366,35 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
                     """.replace("USE_DATASET", "" + differentBiomes)
             );
         }
+        if (configVersion == 1.5) {
+            getConfig().set("config_version", 1.6);
+            this.saveConfig();
+            manipulator.addLineAbove(
+                    "# -----------------------------------------------------",
+                    """
+                    # Swiss buildings ---------------------------------------
+                    # If enabled, the plugin will load highly accurate Swiss building footprints from
+                    # preprocessed tiles and draw them as surface blocks instead of the generic OSM outlines.
+                    # This only affects Switzerland and Liechtenstein.
+                    # The tile directory needs to be inside the plugin folder.
+                    swiss_buildings:
+                      enabled: true
+                      directory: swiss_buildings
+                      outline_material: minecraft:stone_bricks
+                      interior_material: minecraft:clay
+
+                    # Swiss buildings 3D ----------------------------------
+                    # If enabled, the /generatebuilding command can place 3D building shells
+                    # from the preprocessed SwissBuildings3D dataset using FastAsyncWorldEdit.
+                    # The tile directory needs to be inside the plugin folder.
+                    swiss_buildings_3d:
+                      enabled: true
+                      directory: swiss_buildings_3d
+                      material: minecraft:stone
+                      radius: 10.0
+
+                    """);
+        }
     }
 
     private void registerCommands() {
@@ -400,6 +425,12 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
                     "distortion",
                     "Displays projection distortion at your current location",
                     new DistortionCommand()
+            );
+
+            commands.register(
+                new GenerateBuildingCommand(this).create(),
+                "generatebuilding",
+                List.of("genbldg")
             );
         });
     }
