@@ -50,10 +50,14 @@ public class Properties {
     public static final String SWISS_BUILDINGS_OUTLINE_MATERIAL = "swiss_buildings.outline_material";
     public static final String SWISS_BUILDINGS_INTERIOR_MATERIAL = "swiss_buildings.interior_material";
 
+    public static final String SWISS_BUILDINGS_3D_ENABLED = "swiss_buildings_3d.enabled";
+    public static final String SWISS_BUILDINGS_3D_DIRECTORY = "swiss_buildings_3d.directory";
+    public static final String SWISS_BUILDINGS_3D_MATERIAL = "swiss_buildings_3d.material";
+    public static final String SWISS_BUILDINGS_3D_RADIUS = "swiss_buildings_3d.radius";
+
     public class NonConfigurable {
         public static final String METHOD_MV = "MULTIVERSE";
         public static final String METHOD_SRV = "SERVER";
         public static final String CROSS_TELEPORTATION_CHANNEL = "terraplusminus:teleportbridge";
     }
-
 }

@@ -67,6 +67,15 @@ swiss_buildings:
   outline_material: minecraft:stone_bricks
   interior_material: minecraft:clay
 
+# Swiss buildings 3D ----------------------------------
+# If enabled, the /generatebuilding command can place 3D building shells
+# from the preprocessed SwissBuildings3D dataset using FastAsyncWorldEdit.
+# The tile directory needs to be inside the plugin folder.
+swiss_buildings_3d:
+  enabled: true
+  directory: swiss_buildings_3d
+  material: minecraft:stone
+  radius: 10.0
 
 # -----------------------------------------------------
 

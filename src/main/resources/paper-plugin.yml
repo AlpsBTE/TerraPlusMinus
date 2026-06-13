@@ -7,3 +7,13 @@ prefix: T+-
 authors: [ Zoriot, meysster, Nudlsupp, Nachwahl ]
 website: https://bte-germany.de
 load: STARTUP
+dependencies:
+  server:
+    FastAsyncWorldEdit:
+      load: BEFORE
+      required: false
+      join-classpath: true
+    WorldEdit:
+      load: BEFORE
+      required: false
+      join-classpath: true
