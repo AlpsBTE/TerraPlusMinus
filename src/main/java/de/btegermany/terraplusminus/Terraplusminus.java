@@ -366,6 +366,35 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
                     """.replace("USE_DATASET", "" + differentBiomes)
             );
         }
+        if (configVersion == 1.5) {
+            getConfig().set("config_version", 1.6);
+            this.saveConfig();
+            manipulator.addLineAbove(
+                    "# -----------------------------------------------------",
+                    """
+                    # Swiss buildings ---------------------------------------
+                    # If enabled, the plugin will load highly accurate Swiss building footprints from
+                    # preprocessed tiles and draw them as surface blocks instead of the generic OSM outlines.
+                    # This only affects Switzerland and Liechtenstein.
+                    # The tile directory needs to be inside the plugin folder.
+                    swiss_buildings:
+                      enabled: true
+                      directory: swiss_buildings
+                      outline_material: minecraft:stone_bricks
+                      interior_material: minecraft:clay
+
+                    # Swiss buildings 3D ----------------------------------
+                    # If enabled, the /generatebuilding command can place 3D building shells
+                    # from the preprocessed SwissBuildings3D dataset using FastAsyncWorldEdit.
+                    # The tile directory needs to be inside the plugin folder.
+                    swiss_buildings_3d:
+                      enabled: true
+                      directory: swiss_buildings_3d
+                      material: minecraft:stone
+                      radius: 10.0
+
+                    """);
+        }
     }
 
     private void registerCommands() {
