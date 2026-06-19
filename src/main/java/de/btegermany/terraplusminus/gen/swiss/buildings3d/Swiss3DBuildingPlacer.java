@@ -1,6 +1,7 @@
 package de.btegermany.terraplusminus.gen.swiss.buildings3d;
 
 import com.sk89q.worldedit.EditSession;
+import com.sk89q.worldedit.LocalSession;
 import com.sk89q.worldedit.WorldEdit;
 import com.sk89q.worldedit.bukkit.BukkitAdapter;
 import com.sk89q.worldedit.bukkit.BukkitWorld;
@@ -50,6 +51,11 @@ public final class Swiss3DBuildingPlacer {
             Set<BuildingShellVoxelizer.BlockPos> shell,
             String material
     ) {
+        if (!player.isOnline()) {
+            plugin.getComponentLogger().warn("Player {} logged off before building placement; aborting.", player.getName());
+            return;
+        }
+
         BlockState blockState = parseBlockState(material);
         if (blockState == null) {
             player.sendMessage("§cInvalid material: " + material);
@@ -57,19 +63,21 @@ public final class Swiss3DBuildingPlacer {
         }
 
         BukkitWorld bukkitWorld = new BukkitWorld(world);
+        com.sk89q.worldedit.entity.Player actor = BukkitAdapter.adapt(player);
+        LocalSession localSession = WorldEdit.getInstance().getSessionManager().get(actor);
 
         try (
                 EditSession editSession = WorldEdit.getInstance()
                         .newEditSessionBuilder()
                         .world(bukkitWorld)
-                        .actor(BukkitAdapter.adapt(player))
+                        .actor(actor)
                         .build()
         ) {
             for (BuildingShellVoxelizer.BlockPos pos : shell) {
                 editSession.setBlock(BlockVector3.at(pos.x(), pos.y(), pos.z()), blockState);
             }
 
-            // FAWE flushes the queue on close; history is saved automatically.
+            localSession.remember(editSession);
         } catch (Exception e) {
             player.sendMessage("§cError placing building blocks: " + e.getMessage());
             plugin.getComponentLogger().error("Error placing Swiss3D building blocks", e);

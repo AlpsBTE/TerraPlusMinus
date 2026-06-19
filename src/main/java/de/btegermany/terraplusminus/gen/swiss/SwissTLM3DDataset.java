@@ -91,6 +91,10 @@ public class SwissTLM3DDataset extends TiledDataset<BVH<VectorGeometry>> impleme
         return CompletableFuture.completedFuture(BVH.of(polygons.toArray(new VectorGeometry[0])));
     }
 
+    public void invalidateCache() {
+        this.cache.invalidateAll();
+    }
+
     @Override
     public CompletableFuture<BVH<VectorGeometry>[]> getAsync(@NonNull CornerBoundingBox2d bounds) throws OutOfProjectionBoundsException {
         Bounds2d localBounds = bounds.fromGeo(this.projection).axisAlign();

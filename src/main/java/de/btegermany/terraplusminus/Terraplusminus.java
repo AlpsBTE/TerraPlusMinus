@@ -6,6 +6,7 @@ import static net.daporkchop.lib.common.util.PValidation.checkState;
 import de.btegermany.terraplusminus.commands.DistortionCommand;
 import de.btegermany.terraplusminus.commands.GenerateBuildingCommand;
 import de.btegermany.terraplusminus.commands.OffsetCommand;
+import de.btegermany.terraplusminus.commands.ReloadBuildingsCommand;
 import de.btegermany.terraplusminus.commands.TpllCommand;
 import de.btegermany.terraplusminus.commands.WhereCommand;
 import de.btegermany.terraplusminus.events.PlayerCommandPreprocessEvent;
@@ -61,6 +62,8 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
     @Getter
     @Setter
     private String registeredServerName = null;
+
+    private GenerateBuildingCommand generateBuildingCommand;
 
     @Override
     public void onEnable() {
@@ -427,12 +430,24 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
                     new DistortionCommand()
             );
 
+            this.generateBuildingCommand = new GenerateBuildingCommand(this);
             commands.register(
-                new GenerateBuildingCommand(this).create(),
+                this.generateBuildingCommand.create(),
                 "generatebuilding",
                 List.of("genbldg")
             );
+            commands.register(
+                    "reloadbuildings",
+                    "Reloads Swiss building datasets (footprints + 3D shells) from disk.",
+                    new ReloadBuildingsCommand(this)
+            );
         });
+    }
+
+    public void reloadBuildingDataset() {
+        if (this.generateBuildingCommand != null) {
+            this.generateBuildingCommand.reloadDataset();
+        }
     }
 
     private void setupTerraMinusMinus() {

@@ -42,7 +42,7 @@ public class GenerateBuildingCommand {
 
     private final Terraplusminus plugin;
     private SwissBuildings3DDataset dataset;
-    private String prefix;
+    private final String prefix;
 
     public GenerateBuildingCommand(Terraplusminus plugin) {
         this.plugin = plugin;
@@ -56,6 +56,11 @@ public class GenerateBuildingCommand {
                 .then(Commands.argument(COORDS_ARG, StringArgumentType.greedyString()).executes(this::execute))
                 .executes(this::executeSelf)
                 .build();
+    }
+
+    public void reloadDataset() {
+        this.dataset = null;
+        initDataset();
     }
 
     private void initDataset() {
@@ -154,8 +159,7 @@ public class GenerateBuildingCommand {
         CompletableFuture.supplyAsync(() -> dataset.findNearestBuilding(lon, lat, radius))
                 .thenApplyAsync(shell -> {
                     if (shell == null) return null;
-                    Set<BuildingShellVoxelizer.BlockPos> voxels = BuildingShellVoxelizer.voxelize(shell, projection, yOffset);
-                    return voxels;
+                    return BuildingShellVoxelizer.voxelize(shell, projection, yOffset);
                 })
                 .thenAccept(voxels -> Bukkit.getScheduler().runTask(this.plugin, () -> {
                     if (voxels == null) {

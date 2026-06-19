@@ -57,6 +57,8 @@ public class RealWorldGenerator extends ChunkGenerator {
     private final EarthGeneratorSettings settings;
     @Getter
     private final int yOffset;
+    @Getter
+    private final GeneratorDatasets datasets;
 
     private final LoadingCache<@NotNull ChunkPos, @NotNull CompletableFuture<CachedChunkData>> cache;
     private final CustomBiomeProvider customBiomeProvider;
@@ -128,13 +130,13 @@ public class RealWorldGenerator extends ChunkGenerator {
             }
         }
 
-        GeneratorDatasets datasets = new GeneratorDatasets(datasetsMap, this.settings.projection());
+        this.datasets = new GeneratorDatasets(datasetsMap, this.settings.projection());
 
         this.cache = CacheBuilder.newBuilder()
                 .expireAfterAccess(5L, TimeUnit.MINUTES)
                 .softValues()
                 .maximumSize(256)
-                .build(new ChunkDataLoader(datasets, bakerList.toArray(new IEarthDataBaker[0])));
+                .build(new ChunkDataLoader(this.datasets, bakerList.toArray(new IEarthDataBaker[0])));
 
         // This code is explicitly there for backward compatibility and is legitimate in using the deprecated config keys
         this.blockMapper = BlockMapper.fromPlugin(plugin)
