@@ -116,14 +116,18 @@ def process_tile(gdb_inner_path: Path, output_tile_dir: Path, transform) -> dict
             feat_min_lat = float("inf")
             feat_max_lon = float("-inf")
             feat_max_lat = float("-inf")
+            feat_min_z = float("inf")
+            feat_max_z = float("-inf")
 
             for tri in triangles:
                 for pt in tri:
-                    lon, lat = pt[0], pt[1]
+                    lon, lat, elevation = pt[0], pt[1], pt[2]
                     feat_min_lon = min(feat_min_lon, lon)
                     feat_min_lat = min(feat_min_lat, lat)
                     feat_max_lon = max(feat_max_lon, lon)
                     feat_max_lat = max(feat_max_lat, lat)
+                    feat_min_z = min(feat_min_z, elevation)
+                    feat_max_z = max(feat_max_z, elevation)
 
             if feat_min_lon == float("inf"):
                 continue
@@ -150,6 +154,14 @@ def process_tile(gdb_inner_path: Path, output_tile_dir: Path, transform) -> dict
                 "properties": {
                     "uuid": str(uuid) if uuid is not None else None,
                     "egid": str(egid) if egid is not None else None,
+                },
+                "bounds": {
+                    "minLon": feat_min_lon,
+                    "minLat": feat_min_lat,
+                    "minZ": feat_min_z,
+                    "maxLon": feat_max_lon,
+                    "maxLat": feat_max_lat,
+                    "maxZ": feat_max_z,
                 },
                 "triangles": triangles,
             }

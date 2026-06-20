@@ -8,12 +8,15 @@ import java.util.List;
  * Represents a single building shell from the SwissBuildings3D dataset.
  * Triangles are stored in WGS84 (lon, lat) with orthometric elevation (z) in meters.
  */
-public record BuildingShell(String id, String egid, String uuid, List<Triangle> triangles) {
+public record BuildingShell(String id, String egid, String uuid, List<Triangle> triangles, Bounds bounds) {
     public BuildingShell(@NonNull String id, String egid, String uuid, @NonNull List<Triangle> triangles) {
-        this.id = id;
-        this.egid = egid;
-        this.uuid = uuid;
-        this.triangles = triangles;
+        this(id, egid, uuid, triangles, Bounds.fromTriangles(triangles));
+    }
+
+    public BuildingShell {
+        if (bounds == null) {
+            bounds = Bounds.fromTriangles(triangles);
+        }
     }
 
     /**
@@ -37,31 +40,6 @@ public record BuildingShell(String id, String egid, String uuid, List<Triangle> 
 
         if (count == 0) return new double[]{0.0d, 0.0d, 0.0d};
         return new double[]{sumLon / count, sumLat / count, sumZ / count};
-    }
-
-    /**
-     * Computes the bounding box in WGS84: {minLon, minLat, minZ, maxLon, maxLat, maxZ}.
-     */
-    public double[] bounds() {
-        double minLon = Double.POSITIVE_INFINITY;
-        double minLat = Double.POSITIVE_INFINITY;
-        double minZ = Double.POSITIVE_INFINITY;
-        double maxLon = Double.NEGATIVE_INFINITY;
-        double maxLat = Double.NEGATIVE_INFINITY;
-        double maxZ = Double.NEGATIVE_INFINITY;
-
-        for (Triangle tri : this.triangles) {
-            for (Vertex v : tri.vertices) {
-                minLon = Math.min(minLon, v.lon);
-                minLat = Math.min(minLat, v.lat);
-                minZ = Math.min(minZ, v.elevation);
-                maxLon = Math.max(maxLon, v.lon);
-                maxLat = Math.max(maxLat, v.lat);
-                maxZ = Math.max(maxZ, v.elevation);
-            }
-        }
-
-        return new double[]{minLon, minLat, minZ, maxLon, maxLat, maxZ};
     }
 
     public record Triangle(Vertex[] vertices) {

@@ -4,20 +4,28 @@ import com.mojang.brigadier.Command;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.tree.LiteralCommandNode;
+import com.sk89q.worldedit.IncompleteRegionException;
+import com.sk89q.worldedit.LocalSession;
+import com.sk89q.worldedit.WorldEdit;
+import com.sk89q.worldedit.bukkit.BukkitAdapter;
+import com.sk89q.worldedit.math.BlockVector2;
+import com.sk89q.worldedit.regions.Region;
+import de.btegermany.terraplusminus.gen.swiss.buildings3d.Bounds;
 import de.btegermany.terraplusminus.Terraplusminus;
 import de.btegermany.terraplusminus.gen.RealWorldGenerator;
+import de.btegermany.terraplusminus.gen.swiss.buildings3d.BuildingShell;
 import de.btegermany.terraplusminus.gen.swiss.buildings3d.BuildingShellVoxelizer;
 import de.btegermany.terraplusminus.gen.swiss.buildings3d.Swiss3DBuildingPlacer;
 import de.btegermany.terraplusminus.gen.swiss.buildings3d.SwissBuildings3DDataset;
 import de.btegermany.terraplusminus.utils.Properties;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
-
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-
 import net.buildtheearth.terraminusminus.generator.EarthGeneratorSettings;
 import net.buildtheearth.terraminusminus.projection.GeographicProjection;
 import net.buildtheearth.terraminusminus.projection.OutOfProjectionBoundsException;
@@ -33,7 +41,7 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Command handler for /generatebuilding.
  * <p>
- * Generates a 3D building shell from the SwissBuildings3D dataset at the given coordinates.
+ * Generates 3D building shells from the SwissBuildings3D dataset.
  * Uses FastAsyncWorldEdit for placement so the operation is undoable.
  */
 public class GenerateBuildingCommand {
@@ -53,7 +61,9 @@ public class GenerateBuildingCommand {
     public LiteralCommandNode<CommandSourceStack> create() {
         return Commands.literal("generatebuilding")
                 .requires(this::isPermitted)
-                .then(Commands.argument(COORDS_ARG, StringArgumentType.greedyString()).executes(this::execute))
+                .then(Commands.literal("selection").executes(this::executeSelection))
+                .then(Commands.literal("sel").executes(this::executeSelection))
+                .then(Commands.argument(COORDS_ARG, StringArgumentType.greedyString()).executes(this::executePoint))
                 .executes(this::executeSelf)
                 .build();
     }
@@ -73,7 +83,7 @@ public class GenerateBuildingCommand {
         if (java.nio.file.Files.exists(dir)) dataset = new SwissBuildings3DDataset(dir);
     }
 
-    private int execute(@NotNull CommandContext<CommandSourceStack> ctx) {
+    private int executePoint(@NotNull CommandContext<CommandSourceStack> ctx) {
         CommandSender sender = ctx.getSource().getSender();
         if (!(ctx.getSource().getExecutor() instanceof Player player)) {
             sender.sendMessage(prefix + "§cThis command can only be executed by a player.");
@@ -81,12 +91,16 @@ public class GenerateBuildingCommand {
         }
 
         String coordsArg = ctx.getArgument(COORDS_ARG, String.class);
+        String normalizedArg = coordsArg.trim();
+        if ("selection".equalsIgnoreCase(normalizedArg) || "sel".equalsIgnoreCase(normalizedArg)) {
+            return executeSelection(ctx);
+        }
+
         String[] parts = coordsArg.trim().split("\\s+");
 
         Double overrideRadius = null;
         String coordsStr = coordsArg;
 
-        // Try to parse the last token as a radius
         if (parts.length >= 2) {
             try {
                 overrideRadius = Double.parseDouble(parts[parts.length - 1]);
@@ -102,7 +116,7 @@ public class GenerateBuildingCommand {
             return Command.SINGLE_SUCCESS;
         }
 
-        return runGeneration(player, sender, latLng.getLat(), latLng.getLng(), overrideRadius);
+        return runPointGeneration(player, sender, latLng.getLat(), latLng.getLng(), overrideRadius);
     }
 
     private int executeSelf(@NotNull CommandContext<CommandSourceStack> ctx) {
@@ -112,54 +126,86 @@ public class GenerateBuildingCommand {
             return Command.SINGLE_SUCCESS;
         }
 
-        RealWorldGenerator terraGenerator = findTerraGenerator(player);
-        if (terraGenerator == null) {
-            sender.sendMessage(prefix + "§cThis is not a Terraplusminus world.");
+        GenerationContext context = resolveContext(player, sender);
+        if (context == null) {
             return Command.SINGLE_SUCCESS;
         }
 
-        double x = player.getLocation().getX();
-        double z = player.getLocation().getZ();
-        GeographicProjection projection = terraGenerator.getSettings().projection();
         double[] geo;
         try {
-            geo = projection.toGeo(x, z);
+            geo = context.projection().toGeo(player.getLocation().getX(), player.getLocation().getZ());
         } catch (OutOfProjectionBoundsException e) {
             sender.sendMessage(prefix + "§cYour current location is outside projection bounds.");
             return Command.SINGLE_SUCCESS;
         }
 
-        return runGeneration(player, sender, geo[1], geo[0], null);
+        return runPointGeneration(player, sender, geo[1], geo[0], null);
     }
 
-    private int runGeneration(Player player, CommandSender sender, double lat, double lon, Double overrideRadius) {
-        if (dataset == null) {
-            sender.sendMessage(prefix + "§cSwissBuildings3D dataset is not loaded or disabled.");
+    private int executeSelection(@NotNull CommandContext<CommandSourceStack> ctx) {
+        CommandSender sender = ctx.getSource().getSender();
+        if (!(ctx.getSource().getExecutor() instanceof Player player)) {
+            sender.sendMessage(prefix + "§cThis command can only be executed by a player.");
             return Command.SINGLE_SUCCESS;
         }
 
-        RealWorldGenerator terraGenerator = findTerraGenerator(player);
-        if (terraGenerator == null) {
-            sender.sendMessage(prefix + "§cThis is not a Terraplusminus world.");
+        GenerationContext context = resolveContext(player, sender);
+        if (context == null) {
             return Command.SINGLE_SUCCESS;
         }
 
-        EarthGeneratorSettings settings = terraGenerator.getSettings();
-        GeographicProjection projection = settings.projection();
-        int yOffset = terraGenerator.getYOffset();
-        World world = player.getWorld();
-        String material = this.plugin.getConfig().getString(Properties.SWISS_BUILDINGS_3D_MATERIAL, "minecraft:stone");
+        Region region = getSelection(player, sender, context.world());
+        if (region == null) {
+            return Command.SINGLE_SUCCESS;
+        }
+
+        HorizontalSelection selection = HorizontalSelection.from(region);
+        GeoBounds geoBounds;
+        try {
+            geoBounds = selection.toGeoBounds(context.projection());
+        } catch (OutOfProjectionBoundsException e) {
+            sender.sendMessage(prefix + "§cYour WorldEdit selection is outside projection bounds.");
+            return Command.SINGLE_SUCCESS;
+        }
+
+        sender.sendMessage(prefix + "§7Searching selection for buildings...");
+
+        CompletableFuture.supplyAsync(() -> generateSelectionBatch(context, selection, geoBounds))
+                .thenAccept(result -> Bukkit.getScheduler().runTask(this.plugin, () -> {
+                    if (result == null || result.shells().isEmpty()) {
+                        sender.sendMessage(prefix + "§cNo buildings found inside the current WorldEdit selection.");
+                        return;
+                    }
+
+                    sender.sendMessage(prefix + "§7Generating " + result.buildings() + " buildings (" + result.blocks() + " shell blocks)...");
+                    Swiss3DBuildingPlacer.placeShells(this.plugin, player, context.world(), result.shells(), context.material());
+                    sender.sendMessage(prefix + "§aGenerated " + result.buildings() + " buildings. Use §7//undo§a to revert.");
+                }))
+                .exceptionally(ex -> {
+                    Bukkit.getScheduler().runTask(this.plugin, () -> sender.sendMessage(prefix + "§cError generating buildings: " + ex.getMessage()));
+                    this.plugin.getComponentLogger().error("Error generating Swiss3D buildings from selection", ex);
+                    return null;
+                });
+
+        return Command.SINGLE_SUCCESS;
+    }
+
+    private int runPointGeneration(Player player, CommandSender sender, double lat, double lon, Double overrideRadius) {
+        GenerationContext context = resolveContext(player, sender);
+        if (context == null) {
+            return Command.SINGLE_SUCCESS;
+        }
+
         double radius = overrideRadius != null
                 ? overrideRadius
                 : this.plugin.getConfig().getDouble(Properties.SWISS_BUILDINGS_3D_RADIUS, 10.0d);
 
         sender.sendMessage(prefix + "§7Searching for building...");
 
-        // Run the heavy work off the main thread
         CompletableFuture.supplyAsync(() -> dataset.findNearestBuilding(lon, lat, radius))
-                .thenApplyAsync(shell -> {
+                .thenApply(shell -> {
                     if (shell == null) return null;
-                    return BuildingShellVoxelizer.voxelize(shell, projection, yOffset);
+                    return BuildingShellVoxelizer.voxelize(shell, context.projection(), context.yOffset());
                 })
                 .thenAccept(voxels -> Bukkit.getScheduler().runTask(this.plugin, () -> {
                     if (voxels == null) {
@@ -171,7 +217,7 @@ public class GenerateBuildingCommand {
                         return;
                     }
                     sender.sendMessage(prefix + "§7Generating " + voxels.size() + " shell blocks...");
-                    Swiss3DBuildingPlacer.place(this.plugin, player, world, voxels, material);
+                    Swiss3DBuildingPlacer.place(this.plugin, player, context.world(), voxels, context.material());
                     sender.sendMessage(prefix + "§aBuilding generated. Use §7//undo§a to revert.");
                 }))
                 .exceptionally(ex -> {
@@ -181,6 +227,121 @@ public class GenerateBuildingCommand {
                 });
 
         return Command.SINGLE_SUCCESS;
+    }
+
+    private SelectionGenerationResult generateSelectionBatch(
+            GenerationContext context,
+            HorizontalSelection selection,
+            GeoBounds geoBounds
+    ) {
+        List<BuildingShell> candidates = dataset.findBuildingsIntersecting(
+                geoBounds.minLon(),
+                geoBounds.minLat(),
+                geoBounds.maxLon(),
+                geoBounds.maxLat()
+        );
+        if (candidates.isEmpty()) {
+            return SelectionGenerationResult.empty();
+        }
+
+        List<Set<BuildingShellVoxelizer.BlockPos>> matchedShells = new ArrayList<>();
+        long totalBlocks = 0L;
+
+        for (BuildingShell shell : candidates) {
+            ProjectedBounds projectedBounds = projectBounds(shell.bounds(), context.projection());
+            if (projectedBounds == null || !selection.intersects(projectedBounds)) {
+                continue;
+            }
+
+            Set<BuildingShellVoxelizer.BlockPos> voxels = BuildingShellVoxelizer.voxelize(shell, context.projection(), context.yOffset());
+            if (voxels.isEmpty() || !intersectsSelection(selection, voxels)) {
+                continue;
+            }
+
+            matchedShells.add(voxels);
+            totalBlocks += voxels.size();
+        }
+
+        return matchedShells.isEmpty()
+                ? SelectionGenerationResult.empty()
+                : new SelectionGenerationResult(matchedShells.size(), totalBlocks, matchedShells);
+    }
+
+    private GenerationContext resolveContext(Player player, CommandSender sender) {
+        if (dataset == null) {
+            sender.sendMessage(prefix + "§cSwissBuildings3D dataset is not loaded or disabled.");
+            return null;
+        }
+
+        RealWorldGenerator terraGenerator = findTerraGenerator(player);
+        if (terraGenerator == null) {
+            sender.sendMessage(prefix + "§cThis is not a Terraplusminus world.");
+            return null;
+        }
+
+        EarthGeneratorSettings settings = terraGenerator.getSettings();
+        GeographicProjection projection = settings.projection();
+        int yOffset = terraGenerator.getYOffset();
+        World world = player.getWorld();
+        String material = this.plugin.getConfig().getString(Properties.SWISS_BUILDINGS_3D_MATERIAL, "minecraft:stone");
+        return new GenerationContext(terraGenerator, projection, yOffset, world, material);
+    }
+
+    private Region getSelection(Player player, CommandSender sender, World world) {
+        try {
+            com.sk89q.worldedit.entity.Player actor = BukkitAdapter.adapt(player);
+            LocalSession localSession = WorldEdit.getInstance().getSessionManager().get(actor);
+            return localSession.getSelection(BukkitAdapter.adapt(world));
+        } catch (IncompleteRegionException e) {
+            sender.sendMessage(prefix + "§cMake a WorldEdit selection first, then run §7/generatebuilding selection§c.");
+            return null;
+        } catch (Exception e) {
+            sender.sendMessage(prefix + "§cCould not read your WorldEdit selection: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private static boolean intersectsSelection(
+            HorizontalSelection selection,
+            Set<BuildingShellVoxelizer.BlockPos> voxels
+    ) {
+        for (BuildingShellVoxelizer.BlockPos pos : voxels) {
+            if (selection.contains(pos.x(), pos.z())) return true;
+        }
+        return false;
+    }
+
+    private static ProjectedBounds projectBounds(Bounds bounds, GeographicProjection projection) {
+        try {
+            double[][] corners = new double[][]{
+                    {bounds.minLon(), bounds.minLat()},
+                    {bounds.minLon(), bounds.maxLat()},
+                    {bounds.maxLon(), bounds.minLat()},
+                    {bounds.maxLon(), bounds.maxLat()}
+            };
+
+            double minX = Double.POSITIVE_INFINITY;
+            double minZ = Double.POSITIVE_INFINITY;
+            double maxX = Double.NEGATIVE_INFINITY;
+            double maxZ = Double.NEGATIVE_INFINITY;
+
+            for (double[] corner : corners) {
+                double[] projected = projection.fromGeo(corner[0], corner[1]);
+                minX = Math.min(minX, projected[0]);
+                minZ = Math.min(minZ, projected[1]);
+                maxX = Math.max(maxX, projected[0]);
+                maxZ = Math.max(maxZ, projected[1]);
+            }
+
+            return new ProjectedBounds(
+                    (int) Math.floor(minX),
+                    (int) Math.floor(minZ),
+                    (int) Math.ceil(maxX),
+                    (int) Math.ceil(maxZ)
+            );
+        } catch (OutOfProjectionBoundsException e) {
+            return null;
+        }
     }
 
     private boolean isPermitted(@NotNull CommandSourceStack source) {
@@ -195,5 +356,127 @@ public class GenerateBuildingCommand {
             if (w.getGenerator() instanceof RealWorldGenerator rg) return rg;
         }
         return null;
+    }
+
+    private record GenerationContext(
+            RealWorldGenerator terraGenerator,
+            GeographicProjection projection,
+            int yOffset,
+            World world,
+            String material
+    ) {
+    }
+
+    private record SelectionGenerationResult(
+            int buildings,
+            long blocks,
+            List<Set<BuildingShellVoxelizer.BlockPos>> shells
+    ) {
+        static SelectionGenerationResult empty() {
+            return new SelectionGenerationResult(0, 0L, List.of());
+        }
+    }
+
+    private record GeoBounds(double minLon, double minLat, double maxLon, double maxLat) {
+    }
+
+    private record ProjectedBounds(int minX, int minZ, int maxX, int maxZ) {
+    }
+
+    private record SelectionPoint(double x, double z) {
+    }
+
+    private record HorizontalSelection(
+            int minX,
+            int maxX,
+            int minZ,
+            int maxZ,
+            List<SelectionPoint> polygon
+    ) {
+        static HorizontalSelection from(Region region) {
+            int minX = region.getMinimumPoint().x();
+            int maxX = region.getMaximumPoint().x();
+            int minZ = region.getMinimumPoint().z();
+            int maxZ = region.getMaximumPoint().z();
+
+            List<BlockVector2> polygonPoints = region.polygonize(-1);
+            List<SelectionPoint> points = new ArrayList<>(polygonPoints.size());
+            for (BlockVector2 point : polygonPoints) {
+                points.add(new SelectionPoint(point.x(), point.z()));
+            }
+
+            if (points.size() < 3) {
+                points = List.of(
+                        new SelectionPoint(minX, minZ),
+                        new SelectionPoint(minX, maxZ + 1.0d),
+                        new SelectionPoint(maxX + 1.0d, maxZ + 1.0d),
+                        new SelectionPoint(maxX + 1.0d, minZ)
+                );
+            }
+
+            return new HorizontalSelection(minX, maxX, minZ, maxZ, points);
+        }
+
+        GeoBounds toGeoBounds(GeographicProjection projection) throws OutOfProjectionBoundsException {
+            double minLon = Double.POSITIVE_INFINITY;
+            double minLat = Double.POSITIVE_INFINITY;
+            double maxLon = Double.NEGATIVE_INFINITY;
+            double maxLat = Double.NEGATIVE_INFINITY;
+
+            List<SelectionPoint> samples = new ArrayList<>(this.polygon.size() + 4);
+            samples.addAll(this.polygon);
+            samples.add(new SelectionPoint(this.minX, this.minZ));
+            samples.add(new SelectionPoint(this.minX, this.maxZ + 1.0d));
+            samples.add(new SelectionPoint(this.maxX + 1.0d, this.minZ));
+            samples.add(new SelectionPoint(this.maxX + 1.0d, this.maxZ + 1.0d));
+
+            for (SelectionPoint point : samples) {
+                double[] geo = projection.toGeo(point.x(), point.z());
+                minLon = Math.min(minLon, geo[0]);
+                minLat = Math.min(minLat, geo[1]);
+                maxLon = Math.max(maxLon, geo[0]);
+                maxLat = Math.max(maxLat, geo[1]);
+            }
+
+            return new GeoBounds(minLon, minLat, maxLon, maxLat);
+        }
+
+        boolean intersects(ProjectedBounds bounds) {
+            return this.minX <= bounds.maxX() && this.maxX >= bounds.minX()
+                    && this.minZ <= bounds.maxZ() && this.maxZ >= bounds.minZ();
+        }
+
+        boolean contains(int x, int z) {
+            if (x < this.minX || x > this.maxX || z < this.minZ || z > this.maxZ) return false;
+            if (this.polygon.size() < 3) return true;
+
+            double px = x + 0.5d;
+            double pz = z + 0.5d;
+            boolean inside = false;
+
+            for (int i = 0, j = this.polygon.size() - 1; i < this.polygon.size(); j = i++) {
+                SelectionPoint current = this.polygon.get(i);
+                SelectionPoint previous = this.polygon.get(j);
+
+                if (pointOnSegment(px, pz, previous, current)) return true;
+
+                boolean intersects = ((current.z() > pz) != (previous.z() > pz))
+                        && (px < (previous.x() - current.x()) * (pz - current.z()) / (previous.z() - current.z()) + current.x());
+                if (intersects) inside = !inside;
+            }
+
+            return inside;
+        }
+
+        private static boolean pointOnSegment(double px, double pz, SelectionPoint a, SelectionPoint b) {
+            double cross = (px - a.x()) * (b.z() - a.z()) - (pz - a.z()) * (b.x() - a.x());
+            if (Math.abs(cross) > 1.0e-9d) return false;
+
+            double dot = (px - a.x()) * (b.x() - a.x()) + (pz - a.z()) * (b.z() - a.z());
+            if (dot < 0.0d) return false;
+
+            double squaredLength = (b.x() - a.x()) * (b.x() - a.x()) + (b.z() - a.z()) * (b.z() - a.z());
+            return dot <= squaredLength;
+        }
     }
 }

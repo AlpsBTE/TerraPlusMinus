@@ -11,6 +11,7 @@ import com.sk89q.worldedit.world.block.BlockType;
 import com.sk89q.worldedit.world.block.BlockTypes;
 import de.btegermany.terraplusminus.Terraplusminus;
 
+import java.util.Collection;
 import java.util.Set;
 
 import lombok.NonNull;
@@ -40,15 +41,25 @@ public final class Swiss3DBuildingPlacer {
             @NonNull Set<BuildingShellVoxelizer.BlockPos> shell,
             @NonNull String material
     ) {
-        if (shell.isEmpty()) return;
-        Bukkit.getScheduler().runTask(plugin, () -> placeSync(plugin, player, world, shell, material));
+        placeShells(plugin, player, world, java.util.List.of(shell), material);
+    }
+
+    public static void placeShells(
+            @NonNull Terraplusminus plugin,
+            @NonNull Player player,
+            @NonNull World world,
+            @NonNull Collection<? extends Set<BuildingShellVoxelizer.BlockPos>> shells,
+            @NonNull String material
+    ) {
+        if (shells.isEmpty()) return;
+        Bukkit.getScheduler().runTask(plugin, () -> placeSync(plugin, player, world, shells, material));
     }
 
     private static void placeSync(
             Terraplusminus plugin,
             Player player,
             World world,
-            Set<BuildingShellVoxelizer.BlockPos> shell,
+            Collection<? extends Set<BuildingShellVoxelizer.BlockPos>> shells,
             String material
     ) {
         if (!player.isOnline()) {
@@ -73,8 +84,11 @@ public final class Swiss3DBuildingPlacer {
                         .actor(actor)
                         .build()
         ) {
-            for (BuildingShellVoxelizer.BlockPos pos : shell) {
-                editSession.setBlock(BlockVector3.at(pos.x(), pos.y(), pos.z()), blockState);
+            for (Set<BuildingShellVoxelizer.BlockPos> shell : shells) {
+                if (shell.isEmpty()) continue;
+                for (BuildingShellVoxelizer.BlockPos pos : shell) {
+                    editSession.setBlock(BlockVector3.at(pos.x(), pos.y(), pos.z()), blockState);
+                }
             }
 
             localSession.remember(editSession);

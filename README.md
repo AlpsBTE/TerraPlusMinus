@@ -48,6 +48,10 @@ Custom Tree Generation:
 
 `/offset` - Permission node: `t+-.offset`
 
+`/generatebuilding [<lat> <lon> [radius]]` - Permission node: `t+-.generatebuilding`
+
+`/generatebuilding selection` - Generates every SwissBuildings3D shell that intersects the current WorldEdit selection
+
 Permission node: `t+-.admin` - Bypasses the coordinate bounds of tpll
 
 Permission node: `t+-.autoteleport` - Enables automatic teleportation between linked worlds
@@ -80,4 +84,3 @@ For our config.yml please see [here](./src/main/resources/config.yml)
 # Dependencies
 
 TerraMinusMinus - [Terra--](https://github.com/SmylerMC/terraminusminus) developed by [@SmylerMC](https://github.com/SmylerMC)
-

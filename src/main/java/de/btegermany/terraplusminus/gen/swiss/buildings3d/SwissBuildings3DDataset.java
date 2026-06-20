@@ -72,21 +72,13 @@ public final class SwissBuildings3DDataset {
      * @return the nearest BuildingShell, or null if none is within range
      */
     public BuildingShell findNearestBuilding(double lon, double lat, double radius) {
-        // Find tiles that intersect a rough bounding box around the query point
-        // 1 degree lat ≈ 111km, 1 degree lon varies but at Swiss latitudes ≈ 78km
-        double latDelta = radius / 111_000.0d;
-        double lonDelta = radius / (111_000.0d * Math.cos(Math.toRadians(lat)));
-
-        List<TileInfo> candidates = new ArrayList<>();
-        for (TileInfo tile : this.tiles) {
-            if (!tile.intersects(lon - lonDelta, lat - latDelta, lon + lonDelta, lat + latDelta)) continue;
-            candidates.add(tile);
-        }
-
+        QueryBounds queryBounds = createRadiusBounds(lon, lat, radius);
+        List<TileInfo> candidates = findCandidateTiles(queryBounds.minLon, queryBounds.minLat, queryBounds.maxLon, queryBounds.maxLat);
         if (candidates.isEmpty()) return null;
 
         BuildingShell nearest = null;
         double nearestDistance = Double.POSITIVE_INFINITY;
+        double nearestCentroidDistance = Double.POSITIVE_INFINITY;
 
         for (TileInfo tile : candidates) {
             Path buildingsFile = this.tileDirectory.resolve(tile.name).resolve("buildings.jsonl");
@@ -99,11 +91,20 @@ public final class SwissBuildings3DDataset {
                     BuildingShell shell = parseBuilding(line);
                     if (shell == null) continue;
 
-                    double[] centroid = shell.centroid();
-                    double distance = haversine(lat, lon, centroid[1], centroid[0]);
+                    Bounds bounds = shell.bounds();
+                    if (!bounds.intersects2D(queryBounds.minLon, queryBounds.minLat, queryBounds.maxLon, queryBounds.maxLat)) continue;
 
-                    if (!(distance <= radius) || !(distance < nearestDistance)) continue;
+                    double distance = bounds.distanceTo(lon, lat);
+                    if (distance > radius) continue;
+
+                    double[] centroid = shell.centroid();
+                    double centroidDistance = haversine(lat, lon, centroid[1], centroid[0]);
+
+                    if (distance > nearestDistance) continue;
+                    if (distance == nearestDistance && centroidDistance >= nearestCentroidDistance) continue;
+
                     nearestDistance = distance;
+                    nearestCentroidDistance = centroidDistance;
                     nearest = shell;
                 }
             } catch (IOException ignored) {
@@ -112,6 +113,41 @@ public final class SwissBuildings3DDataset {
         }
 
         return nearest;
+    }
+
+    public List<BuildingShell> findBuildingsIntersecting(double minLon, double minLat, double maxLon, double maxLat) {
+        List<TileInfo> candidates = findCandidateTiles(minLon, minLat, maxLon, maxLat);
+        if (candidates.isEmpty()) return List.of();
+
+        List<BuildingShell> matches = new ArrayList<>();
+        for (TileInfo tile : candidates) {
+            Path buildingsFile = this.tileDirectory.resolve(tile.name).resolve("buildings.jsonl");
+            if (!Files.exists(buildingsFile)) continue;
+
+            try (BufferedReader reader = Files.newBufferedReader(buildingsFile)) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    if (line.isBlank()) continue;
+                    BuildingShell shell = parseBuilding(line);
+                    if (shell == null) continue;
+                    if (!shell.bounds().intersects2D(minLon, minLat, maxLon, maxLat)) continue;
+                    matches.add(shell);
+                }
+            } catch (IOException ignored) {
+                // Skip unreadable tiles
+            }
+        }
+
+        return matches;
+    }
+
+    private List<TileInfo> findCandidateTiles(double minLon, double minLat, double maxLon, double maxLat) {
+        List<TileInfo> candidates = new ArrayList<>();
+        for (TileInfo tile : this.tiles) {
+            if (!tile.intersects(minLon, minLat, maxLon, maxLat)) continue;
+            candidates.add(tile);
+        }
+        return candidates;
     }
 
     private BuildingShell parseBuilding(String jsonLine) {
@@ -139,10 +175,31 @@ public final class SwissBuildings3DDataset {
                 triangles.add(new BuildingShell.Triangle(vertices));
             }
 
-            return new BuildingShell(id, egid, uuid, triangles);
+            JsonObject boundsObj = obj.has("bounds") && obj.get("bounds").isJsonObject()
+                    ? obj.getAsJsonObject("bounds")
+                    : null;
+            Bounds bounds = null;
+            if (boundsObj != null) {
+                bounds = new Bounds(
+                        boundsObj.get("minLon").getAsDouble(),
+                        boundsObj.get("minLat").getAsDouble(),
+                        boundsObj.has("minZ") ? boundsObj.get("minZ").getAsDouble() : 0.0d,
+                        boundsObj.get("maxLon").getAsDouble(),
+                        boundsObj.get("maxLat").getAsDouble(),
+                        boundsObj.has("maxZ") ? boundsObj.get("maxZ").getAsDouble() : 0.0d
+                );
+            }
+
+            return new BuildingShell(id, egid, uuid, triangles, bounds);
         } catch (Exception e) {
             return null;
         }
+    }
+
+    private static QueryBounds createRadiusBounds(double lon, double lat, double radius) {
+        double latDelta = radius / 111_000.0d;
+        double lonDelta = radius / (111_000.0d * Math.cos(Math.toRadians(lat)));
+        return new QueryBounds(lon - lonDelta, lat - latDelta, lon + lonDelta, lat + latDelta);
     }
 
     /**
@@ -163,5 +220,8 @@ public final class SwissBuildings3DDataset {
         boolean intersects(double minLon, double minLat, double maxLon, double maxLat) {
             return this.minLon <= maxLon && this.maxLon >= minLon && this.minLat <= maxLat && this.maxLat >= minLat;
         }
+    }
+
+    private record QueryBounds(double minLon, double minLat, double maxLon, double maxLat) {
     }
 }
