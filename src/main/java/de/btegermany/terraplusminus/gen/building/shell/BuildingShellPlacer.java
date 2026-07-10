@@ -1,4 +1,4 @@
-package de.btegermany.terraplusminus.gen.swiss.buildings3d;
+package de.btegermany.terraplusminus.gen.building.shell;
 
 import com.sk89q.worldedit.EditSession;
 import com.sk89q.worldedit.LocalSession;
@@ -23,7 +23,7 @@ import org.bukkit.entity.Player;
  * Places a voxelized building shell into the world using FastAsyncWorldEdit.
  * Changes are tracked under the player's undo history.
  */
-public final class Swiss3DBuildingPlacer {
+public final class BuildingShellPlacer {
 
     /**
      * Places the shell blocks using FAWE so the operation is undoable.
@@ -94,7 +94,7 @@ public final class Swiss3DBuildingPlacer {
             localSession.remember(editSession);
         } catch (Exception e) {
             player.sendMessage("§cError placing building blocks: " + e.getMessage());
-            plugin.getComponentLogger().error("Error placing Swiss3D building blocks", e);
+            plugin.getComponentLogger().error("Error placing building shell blocks", e);
         }
     }
 

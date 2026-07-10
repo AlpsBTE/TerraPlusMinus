@@ -1,9 +1,9 @@
-package de.btegermany.terraplusminus.gen.swiss.buildings3d;
+package de.btegermany.terraplusminus.gen.building.shell;
 
 import java.util.List;
 
 /**
- * Bounding box for a SwissBuildings3D shell in WGS84.
+ * Bounding box for a building shell in WGS84.
  */
 public record Bounds(double minLon, double minLat, double minZ, double maxLon, double maxLat, double maxZ) {
     public boolean intersects2D(double otherMinLon, double otherMinLat, double otherMaxLon, double otherMaxLat) {
@@ -12,9 +12,9 @@ public record Bounds(double minLon, double minLat, double minZ, double maxLon, d
     }
 
     public double distanceTo(double lon, double lat) {
-        double closestLon = clamp(lon, this.minLon, this.maxLon);
-        double closestLat = clamp(lat, this.minLat, this.maxLat);
-        return haversine(lat, lon, closestLat, closestLon);
+        double closestLon = Math.clamp(lon, this.minLon, this.maxLon);
+        double closestLat = Math.clamp(lat, this.minLat, this.maxLat);
+        return GeoMath.haversine(lat, lon, closestLat, closestLon);
     }
 
     public static Bounds fromTriangles(List<BuildingShell.Triangle> triangles) {
@@ -36,24 +36,9 @@ public record Bounds(double minLon, double minLat, double minZ, double maxLon, d
             }
         }
 
-        if (Double.isInfinite(minLon)) {
-            return new Bounds(0.0d, 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
-        }
-        return new Bounds(minLon, minLat, minZ, maxLon, maxLat, maxZ);
+        return !Double.isInfinite(minLon)
+                ? new Bounds(minLon, minLat, minZ, maxLon, maxLat, maxZ)
+                : new Bounds(0.0d, 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
     }
 
-    private static double clamp(double value, double min, double max) {
-        return Math.max(min, Math.min(max, value));
     }
-
-    private static double haversine(double lat1, double lon1, double lat2, double lon2) {
-        final double earthRadius = 6_371_000.0d;
-        double dLat = Math.toRadians(lat2 - lat1);
-        double dLon = Math.toRadians(lon2 - lon1);
-        double a = Math.sin(dLat / 2.0d) * Math.sin(dLat / 2.0d)
-                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
-                * Math.sin(dLon / 2.0d) * Math.sin(dLon / 2.0d);
-        double c = 2.0d * Math.atan2(Math.sqrt(a), Math.sqrt(1.0d - a));
-        return earthRadius * c;
-    }
-}

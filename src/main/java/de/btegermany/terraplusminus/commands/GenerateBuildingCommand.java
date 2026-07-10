@@ -10,20 +10,24 @@ import com.sk89q.worldedit.WorldEdit;
 import com.sk89q.worldedit.bukkit.BukkitAdapter;
 import com.sk89q.worldedit.math.BlockVector2;
 import com.sk89q.worldedit.regions.Region;
-import de.btegermany.terraplusminus.gen.swiss.buildings3d.Bounds;
 import de.btegermany.terraplusminus.Terraplusminus;
 import de.btegermany.terraplusminus.gen.RealWorldGenerator;
-import de.btegermany.terraplusminus.gen.swiss.buildings3d.BuildingShell;
-import de.btegermany.terraplusminus.gen.swiss.buildings3d.BuildingShellVoxelizer;
-import de.btegermany.terraplusminus.gen.swiss.buildings3d.Swiss3DBuildingPlacer;
-import de.btegermany.terraplusminus.gen.swiss.buildings3d.SwissBuildings3DDataset;
+import de.btegermany.terraplusminus.gen.building.config.BuildingDatasetConfigLoader;
+import de.btegermany.terraplusminus.gen.building.config.BuildingShellConfig;
+import de.btegermany.terraplusminus.gen.building.shell.Bounds;
+import de.btegermany.terraplusminus.gen.building.shell.BuildingShell;
+import de.btegermany.terraplusminus.gen.building.shell.BuildingShellDataset;
+import de.btegermany.terraplusminus.gen.building.shell.BuildingShellPlacer;
+import de.btegermany.terraplusminus.gen.building.shell.BuildingShellVoxelizer;
+import de.btegermany.terraplusminus.gen.building.shell.MultiBuildingShellDataset;
 import de.btegermany.terraplusminus.utils.Properties;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import io.papermc.paper.command.brigadier.Commands;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import net.buildtheearth.terraminusminus.generator.EarthGeneratorSettings;
@@ -41,7 +45,7 @@ import org.jetbrains.annotations.NotNull;
 /**
  * Command handler for /generatebuilding.
  * <p>
- * Generates 3D building shells from the SwissBuildings3D dataset.
+ * Generates 3D building shells from configured datasets.
  * Uses FastAsyncWorldEdit for placement so the operation is undoable.
  */
 public class GenerateBuildingCommand {
@@ -49,7 +53,7 @@ public class GenerateBuildingCommand {
     public static final String COORDS_ARG = "coords";
 
     private final Terraplusminus plugin;
-    private SwissBuildings3DDataset dataset;
+    private MultiBuildingShellDataset dataset;
     private final String prefix;
 
     public GenerateBuildingCommand(Terraplusminus plugin) {
@@ -74,13 +78,17 @@ public class GenerateBuildingCommand {
     }
 
     private void initDataset() {
-        if (!this.plugin.getConfig().getBoolean(Properties.SWISS_BUILDINGS_3D_ENABLED, false)) return;
-
-        Path dir = this.plugin
-                .getDataFolder()
-                .toPath()
-                .resolve(this.plugin.getConfig().getString(Properties.SWISS_BUILDINGS_3D_DIRECTORY, "swiss_buildings_3d"));
-        if (java.nio.file.Files.exists(dir)) dataset = new SwissBuildings3DDataset(dir);
+        List<MultiBuildingShellDataset.Entry> entries = new ArrayList<>();
+        for (BuildingShellConfig config : BuildingDatasetConfigLoader.loadShells(this.plugin)) {
+            if (!config.enabled()) continue;
+            if (!java.nio.file.Files.exists(config.path())) {
+                this.plugin.getComponentLogger().warn("Building shell dataset '{}' is enabled but directory '{}' does not exist.", config.id(), config.path());
+                continue;
+            }
+            entries.add(new MultiBuildingShellDataset.Entry(config, new BuildingShellDataset(config.id(), config.path())));
+            this.plugin.getComponentLogger().info("Building shell dataset enabled: {} ({})", config.id(), config.path());
+        }
+        this.dataset = entries.isEmpty() ? null : new MultiBuildingShellDataset(entries);
     }
 
     private int executePoint(@NotNull CommandContext<CommandSourceStack> ctx) {
@@ -170,20 +178,45 @@ public class GenerateBuildingCommand {
 
         sender.sendMessage(prefix + "§7Searching selection for buildings...");
 
-        CompletableFuture.supplyAsync(() -> generateSelectionBatch(context, selection, geoBounds))
-                .thenAccept(result -> Bukkit.getScheduler().runTask(this.plugin, () -> {
-                    if (result == null || result.shells().isEmpty()) {
-                        sender.sendMessage(prefix + "§cNo buildings found inside the current WorldEdit selection.");
+        CompletableFuture.supplyAsync(() -> dataset.findBuildingsIntersecting(
+                        geoBounds.minLon(),
+                        geoBounds.minLat(),
+                        geoBounds.maxLon(),
+                        geoBounds.maxLat()
+                ))
+                .thenAccept(candidates -> {
+                    if (candidates.isEmpty()) {
+                        Bukkit.getScheduler().runTask(this.plugin, () ->
+                                sender.sendMessage(prefix + "§cNo buildings found inside the current WorldEdit selection."));
                         return;
                     }
 
-                    sender.sendMessage(prefix + "§7Generating " + result.buildings() + " buildings (" + result.blocks() + " shell blocks)...");
-                    Swiss3DBuildingPlacer.placeShells(this.plugin, player, context.world(), result.shells(), context.material());
-                    sender.sendMessage(prefix + "§aGenerated " + result.buildings() + " buildings. Use §7//undo§a to revert.");
-                }))
+                    final int candidateCount = candidates.size();
+                    Bukkit.getScheduler().runTask(this.plugin, () ->
+                            sender.sendMessage(prefix + "§7Found " + candidateCount + " buildings, voxelizing..."));
+
+                    CompletableFuture.supplyAsync(() -> generateSelectionBatch(context, selection, candidates))
+                            .thenAccept(result -> Bukkit.getScheduler().runTask(this.plugin, () -> {
+                                if (result == null || result.shellsByMaterial().isEmpty()) {
+                                    sender.sendMessage(prefix + "§cNo buildings could be voxelized inside the current WorldEdit selection.");
+                                    return;
+                                }
+
+                                sender.sendMessage(prefix + "§7Generating " + result.buildings() + " buildings (" + result.blocks() + " shell blocks)...");
+                                for (Map.Entry<String, List<Set<BuildingShellVoxelizer.BlockPos>>> entry : result.shellsByMaterial().entrySet()) {
+                                    BuildingShellPlacer.placeShells(this.plugin, player, context.world(), entry.getValue(), entry.getKey());
+                                }
+                                sender.sendMessage(prefix + "§aGenerated " + result.buildings() + " buildings. Use §7//undo§a to revert.");
+                            }))
+                            .exceptionally(ex -> {
+                                Bukkit.getScheduler().runTask(this.plugin, () -> sender.sendMessage(prefix + "§cError generating buildings: " + ex.getMessage()));
+                                this.plugin.getComponentLogger().error("Error generating building shells from selection", ex);
+                                return null;
+                            });
+                })
                 .exceptionally(ex -> {
-                    Bukkit.getScheduler().runTask(this.plugin, () -> sender.sendMessage(prefix + "§cError generating buildings: " + ex.getMessage()));
-                    this.plugin.getComponentLogger().error("Error generating Swiss3D buildings from selection", ex);
+                    Bukkit.getScheduler().runTask(this.plugin, () -> sender.sendMessage(prefix + "§cError searching for buildings: " + ex.getMessage()));
+                    this.plugin.getComponentLogger().error("Error searching for building shells from selection", ex);
                     return null;
                 });
 
@@ -196,33 +229,32 @@ public class GenerateBuildingCommand {
             return Command.SINGLE_SUCCESS;
         }
 
-        double radius = overrideRadius != null
-                ? overrideRadius
-                : this.plugin.getConfig().getDouble(Properties.SWISS_BUILDINGS_3D_RADIUS, 10.0d);
+        double radius = overrideRadius != null ? overrideRadius : dataset.defaultSearchRadius(lon, lat);
 
         sender.sendMessage(prefix + "§7Searching for building...");
 
-        CompletableFuture.supplyAsync(() -> dataset.findNearestBuilding(lon, lat, radius))
+        CompletableFuture.supplyAsync(() -> dataset.findNearestBuilding(lon, lat, overrideRadius))
                 .thenApply(shell -> {
                     if (shell == null) return null;
-                    return BuildingShellVoxelizer.voxelize(shell, context.projection(), context.yOffset());
+                    Set<BuildingShellVoxelizer.BlockPos> voxels = BuildingShellVoxelizer.voxelize(shell, context.projection(), context.yOffset());
+                    return new PointGenerationResult(voxels, dataset.materialFor(shell));
                 })
-                .thenAccept(voxels -> Bukkit.getScheduler().runTask(this.plugin, () -> {
-                    if (voxels == null) {
+                .thenAccept(result -> Bukkit.getScheduler().runTask(this.plugin, () -> {
+                    if (result == null) {
                         sender.sendMessage(prefix + "§cNo building found within " + radius + " meters of those coordinates.");
                         return;
                     }
-                    if (voxels.isEmpty()) {
+                    if (result.voxels().isEmpty()) {
                         sender.sendMessage(prefix + "§cBuilding found but could not be voxelized.");
                         return;
                     }
-                    sender.sendMessage(prefix + "§7Generating " + voxels.size() + " shell blocks...");
-                    Swiss3DBuildingPlacer.place(this.plugin, player, context.world(), voxels, context.material());
+                    sender.sendMessage(prefix + "§7Generating " + result.voxels().size() + " shell blocks...");
+                    BuildingShellPlacer.place(this.plugin, player, context.world(), result.voxels(), result.material());
                     sender.sendMessage(prefix + "§aBuilding generated. Use §7//undo§a to revert.");
                 }))
                 .exceptionally(ex -> {
                     Bukkit.getScheduler().runTask(this.plugin, () -> sender.sendMessage(prefix + "§cError generating building: " + ex.getMessage()));
-                    this.plugin.getComponentLogger().error("Error generating Swiss3D building", ex);
+                    this.plugin.getComponentLogger().error("Error generating building shell", ex);
                     return null;
                 });
 
@@ -232,20 +264,15 @@ public class GenerateBuildingCommand {
     private SelectionGenerationResult generateSelectionBatch(
             GenerationContext context,
             HorizontalSelection selection,
-            GeoBounds geoBounds
+            List<BuildingShell> candidates
     ) {
-        List<BuildingShell> candidates = dataset.findBuildingsIntersecting(
-                geoBounds.minLon(),
-                geoBounds.minLat(),
-                geoBounds.maxLon(),
-                geoBounds.maxLat()
-        );
         if (candidates.isEmpty()) {
             return SelectionGenerationResult.empty();
         }
 
-        List<Set<BuildingShellVoxelizer.BlockPos>> matchedShells = new ArrayList<>();
+        Map<String, List<Set<BuildingShellVoxelizer.BlockPos>>> matchedShells = new HashMap<>();
         long totalBlocks = 0L;
+        int totalBuildings = 0;
 
         for (BuildingShell shell : candidates) {
             ProjectedBounds projectedBounds = projectBounds(shell.bounds(), context.projection());
@@ -258,18 +285,19 @@ public class GenerateBuildingCommand {
                 continue;
             }
 
-            matchedShells.add(voxels);
+            matchedShells.computeIfAbsent(dataset.materialFor(shell), unused -> new ArrayList<>()).add(voxels);
             totalBlocks += voxels.size();
+            totalBuildings++;
         }
 
         return matchedShells.isEmpty()
                 ? SelectionGenerationResult.empty()
-                : new SelectionGenerationResult(matchedShells.size(), totalBlocks, matchedShells);
+                : new SelectionGenerationResult(totalBuildings, totalBlocks, matchedShells);
     }
 
     private GenerationContext resolveContext(Player player, CommandSender sender) {
         if (dataset == null) {
-            sender.sendMessage(prefix + "§cSwissBuildings3D dataset is not loaded or disabled.");
+            sender.sendMessage(prefix + "§cNo building shell dataset is loaded or enabled.");
             return null;
         }
 
@@ -283,8 +311,7 @@ public class GenerateBuildingCommand {
         GeographicProjection projection = settings.projection();
         int yOffset = terraGenerator.getYOffset();
         World world = player.getWorld();
-        String material = this.plugin.getConfig().getString(Properties.SWISS_BUILDINGS_3D_MATERIAL, "minecraft:stone");
-        return new GenerationContext(terraGenerator, projection, yOffset, world, material);
+        return new GenerationContext(terraGenerator, projection, yOffset, world);
     }
 
     private Region getSelection(Player player, CommandSender sender, World world) {
@@ -362,18 +389,20 @@ public class GenerateBuildingCommand {
             RealWorldGenerator terraGenerator,
             GeographicProjection projection,
             int yOffset,
-            World world,
-            String material
+            World world
     ) {
+    }
+
+    private record PointGenerationResult(Set<BuildingShellVoxelizer.BlockPos> voxels, String material) {
     }
 
     private record SelectionGenerationResult(
             int buildings,
             long blocks,
-            List<Set<BuildingShellVoxelizer.BlockPos>> shells
+            Map<String, List<Set<BuildingShellVoxelizer.BlockPos>>> shellsByMaterial
     ) {
         static SelectionGenerationResult empty() {
-            return new SelectionGenerationResult(0, 0L, List.of());
+            return new SelectionGenerationResult(0, 0L, Map.of());
         }
     }
 

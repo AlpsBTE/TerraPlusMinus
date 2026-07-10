@@ -19,7 +19,8 @@ Output structure:
             buildings.jsonl
         ...
 
-Each building is stored as a JSON line with triangles in WGS84 and elevation in meters.
+Each building is stored as a JSON line with a WGS84 footprint, bounds, and triangles
+with elevation in meters.
 """
 
 import json
@@ -155,6 +156,16 @@ def process_tile(gdb_inner_path: Path, output_tile_dir: Path, transform) -> dict
                     "uuid": str(uuid) if uuid is not None else None,
                     "egid": str(egid) if egid is not None else None,
                 },
+                "footprint": {
+                    "type": "Polygon",
+                    "coordinates": [[
+                        [feat_min_lon, feat_min_lat],
+                        [feat_min_lon, feat_max_lat],
+                        [feat_max_lon, feat_max_lat],
+                        [feat_max_lon, feat_min_lat],
+                        [feat_min_lon, feat_min_lat],
+                    ]],
+                },
                 "bounds": {
                     "minLon": feat_min_lon,
                     "minLat": feat_min_lat,
@@ -210,20 +221,28 @@ def main():
 
     # Scan input directory for GDB tile folders
     tile_entries = []
-    for gdb_outer in input_dir.iterdir():
-        if not gdb_outer.is_dir() or not gdb_outer.suffix == ".gdb":
-            continue
-        # Look for the inner .gdb directory
-        inner_dirs = [
-            d for d in gdb_outer.iterdir() if d.is_dir() and d.suffix == ".gdb"
-        ]
-        if not inner_dirs:
-            print(f"WARNING: No inner .gdb found in {gdb_outer}")
-            continue
-        inner_gdb = inner_dirs[0]
-        # Derive a short tile name from the inner directory name, e.g. "1135-42"
-        tile_name = inner_gdb.stem.replace("swissBUILDINGS3D_3-0_", "")
-        tile_entries.append((inner_gdb, tile_name))
+
+    # Case 1: input_dir itself is a .gdb directory (single tile)
+    if input_dir.is_dir() and input_dir.suffix == ".gdb":
+        tile_name = input_dir.stem.replace("swissBUILDINGS3D_3-0_", "")
+        tile_entries.append((input_dir, tile_name))
+    else:
+        # Case 2: input_dir contains outer .gdb dirs, each with inner .gdb dirs
+        for gdb_outer in input_dir.iterdir():
+            if not gdb_outer.is_dir() or not gdb_outer.suffix == ".gdb":
+                continue
+            # Look for the inner .gdb directory
+            inner_dirs = [
+                d for d in gdb_outer.iterdir() if d.is_dir() and d.suffix == ".gdb"
+            ]
+            if inner_dirs:
+                inner_gdb = inner_dirs[0]
+                tile_name = inner_gdb.stem.replace("swissBUILDINGS3D_3-0_", "")
+                tile_entries.append((inner_gdb, tile_name))
+            else:
+                # The outer .gdb is the tile itself (no nesting)
+                tile_name = gdb_outer.stem.replace("swissBUILDINGS3D_3-0_", "")
+                tile_entries.append((gdb_outer, tile_name))
 
     print(f"Found {len(tile_entries)} tile(s) to process")
 

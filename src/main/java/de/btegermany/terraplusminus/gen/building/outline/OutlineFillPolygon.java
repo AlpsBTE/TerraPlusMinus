@@ -1,4 +1,4 @@
-package de.btegermany.terraplusminus.gen.swiss;
+package de.btegermany.terraplusminus.gen.building.outline;
 
 import static net.daporkchop.lib.common.math.PMath.clamp;
 import static net.daporkchop.lib.common.math.PMath.floorI;
@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
-
 import lombok.NonNull;
 import net.buildtheearth.terraminusminus.TerraConstants;
 import net.buildtheearth.terraminusminus.dataset.geojson.geometry.LineString;
@@ -22,14 +21,9 @@ import net.buildtheearth.terraminusminus.util.bvh.Bounds2d;
 import net.buildtheearth.terraminusminus.util.interval.IntervalTree;
 import net.daporkchop.lib.common.math.PMath;
 
-/**
- * A lightweight polygon that fills the interior with one block and the boundary with another.
- * This avoids the expensive distance-field computation of {@link net.buildtheearth.terraminusminus.dataset.vector.geometry.polygon.DistancePolygon}
- * and instead detects boundary pixels by checking the 4-neighbourhood of each filled pixel.
- */
 public final class OutlineFillPolygon implements VectorGeometry {
-
     private final String id;
+    private final double layer;
     private final IntervalTree<Segment> segments;
     private final double minX;
     private final double maxX;
@@ -39,16 +33,17 @@ public final class OutlineFillPolygon implements VectorGeometry {
     private final BlockState interiorBlock;
 
     public OutlineFillPolygon(
-        @NonNull String id,
-        @NonNull MultiPolygon polygons,
-        @NonNull BlockState outlineBlock,
-        @NonNull BlockState interiorBlock
+            @NonNull String id,
+            double layer,
+            @NonNull MultiPolygon polygons,
+            @NonNull BlockState outlineBlock,
+            @NonNull BlockState interiorBlock
     ) {
         this.id = id;
+        this.layer = layer;
         this.outlineBlock = outlineBlock;
         this.interiorBlock = interiorBlock;
 
-        // Compute bounds and convert multipolygon to line segments
         double minX = Double.POSITIVE_INFINITY;
         double maxX = Double.NEGATIVE_INFINITY;
         double minZ = Double.POSITIVE_INFINITY;
@@ -80,11 +75,6 @@ public final class OutlineFillPolygon implements VectorGeometry {
         int baseX = ChunkPos.cubeToMinBlock(chunkX);
         int baseZ = ChunkPos.cubeToMinBlock(chunkZ);
 
-        // 1. Precompute intersection ranges for an 18×18 area:
-        //    x from -1 to 16 (relative to chunk), z from -1 to 16.
-        //    This extra 1-pixel margin lets us correctly detect boundary pixels
-        //    at chunk edges without falsely assuming they are always on the
-        //    polygon perimeter.
         boolean[][] insideMask = new boolean[18][18];
         for (int ex = 0; ex < 18; ex++) {
             double[] points = this.getIntersectionPoints(baseX + ex - 1);
@@ -97,20 +87,17 @@ public final class OutlineFillPolygon implements VectorGeometry {
             }
         }
 
-        // 2. Scan the chunk and fill: boundary pixels → outline, interior → clay
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
                 if (!insideMask[x + 1][z + 1]) continue;
 
-                // Check 4-neighbourhood in the extended mask
                 boolean isBoundary =
-                    !insideMask[x][z + 1] ||
-                    !insideMask[x + 2][z + 1] ||
-                    !insideMask[x + 1][z] ||
-                    !insideMask[x + 1][z + 2];
+                        !insideMask[x][z + 1] ||
+                        !insideMask[x + 2][z + 1] ||
+                        !insideMask[x + 1][z] ||
+                        !insideMask[x + 1][z + 2];
 
-                BlockState block = isBoundary ? this.outlineBlock : this.interiorBlock;
-                builder.surfaceBlocks()[x * 16 + z] = block;
+                builder.surfaceBlocks()[x * 16 + z] = isBoundary ? this.outlineBlock : this.interiorBlock;
             }
         }
     }
@@ -131,19 +118,20 @@ public final class OutlineFillPolygon implements VectorGeometry {
         do {
             double center = pos + offset;
             List<Segment> segs = this.segments.getAllIntersecting(center);
-            if ((segs.size() & 1) == 0) {
-                // even count = success
-                int size = segs.size();
-                if (size == 0) return TerraConstants.EMPTY_DOUBLE_ARRAY;
-                double[] arr = new double[size];
-                int i = 0;
-                for (Segment s : segs) {
-                    arr[i++] = PMath.lerp(s.z0(), s.z1(), (s.x0() - center) / (s.x0() - s.x1()));
-                }
-                Arrays.sort(arr);
-                return arr;
+            if ((segs.size() & 1) != 0) {
+                offset = 0.45d + ThreadLocalRandom.current().nextDouble() * 0.1d;
+                continue;
             }
-            offset = 0.45d + ThreadLocalRandom.current().nextDouble() * 0.1d;
+
+            int size = segs.size();
+            if (size == 0) return TerraConstants.EMPTY_DOUBLE_ARRAY;
+            double[] arr = new double[size];
+            int i = 0;
+            for (Segment s : segs) {
+                arr[i++] = PMath.lerp(s.z0(), s.z1(), (s.x0() - center) / (s.x0() - s.x1()));
+            }
+            Arrays.sort(arr);
+            return arr;
         } while (retries++ < 3);
         return TerraConstants.EMPTY_DOUBLE_ARRAY;
     }
@@ -155,7 +143,7 @@ public final class OutlineFillPolygon implements VectorGeometry {
 
     @Override
     public double layer() {
-        return 0.0d;
+        return this.layer;
     }
 
     @Override
@@ -176,11 +164,5 @@ public final class OutlineFillPolygon implements VectorGeometry {
     @Override
     public double maxZ() {
         return this.maxZ;
-    }
-
-    @Override
-    public int compareTo(VectorGeometry o) {
-        int d = Double.compare(this.layer(), o.layer());
-        return d == 0 ? this.id().compareTo(o.id()) : d;
     }
 }

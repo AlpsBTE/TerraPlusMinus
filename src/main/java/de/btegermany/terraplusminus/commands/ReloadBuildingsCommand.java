@@ -2,8 +2,7 @@ package de.btegermany.terraplusminus.commands;
 
 import de.btegermany.terraplusminus.Terraplusminus;
 import de.btegermany.terraplusminus.gen.RealWorldGenerator;
-import de.btegermany.terraplusminus.gen.swiss.SwissBuildingBaker;
-import de.btegermany.terraplusminus.gen.swiss.SwissTLM3DDataset;
+import de.btegermany.terraplusminus.gen.building.outline.MultiBuildingOutlineDataset;
 import de.btegermany.terraplusminus.utils.Properties;
 import io.papermc.paper.command.brigadier.BasicCommand;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
@@ -37,10 +36,8 @@ public class ReloadBuildingsCommand implements BasicCommand {
             return;
         }
 
-        // Reload 3D dataset
         plugin.reloadBuildingDataset();
 
-        // Reload footprint dataset on all loaded RealWorldGenerators
         int reloadedWorlds = 0;
         List<World> worlds = plugin.getServer().getWorlds();
         for (World world : worlds) {
@@ -49,14 +46,14 @@ public class ReloadBuildingsCommand implements BasicCommand {
                 GeneratorDatasets datasets = realGen.getDatasets();
                 if (datasets == null) continue;
 
-                Object rawDataset = datasets.getCustom(SwissBuildingBaker.KEY_DATASET_SWISS_BUILDINGS, null);
-                if (!(rawDataset instanceof SwissTLM3DDataset swissDataset)) continue;
+                Object rawDataset = datasets.getCustom(MultiBuildingOutlineDataset.KEY, null);
+                if (!(rawDataset instanceof MultiBuildingOutlineDataset outlineDataset)) continue;
 
-                swissDataset.invalidateCache();
+                outlineDataset.invalidateCache();
                 reloadedWorlds++;
             }
         }
 
-        sender.sendMessage(prefix + "§aReloaded Swiss buildings datasets. (3D + " + reloadedWorlds + " world footprint caches)");
+        sender.sendMessage(prefix + "§aReloaded building datasets. (shells + " + reloadedWorlds + " world outline caches)");
     }
 }

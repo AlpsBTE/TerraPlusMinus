@@ -1,4 +1,4 @@
-package de.btegermany.terraplusminus.gen.swiss.buildings3d;
+package de.btegermany.terraplusminus.gen.building.shell;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -7,7 +7,7 @@ import net.buildtheearth.terraminusminus.projection.GeographicProjection;
 import net.buildtheearth.terraminusminus.projection.OutOfProjectionBoundsException;
 
 /**
- * Voxelizes a closed BuildingShell TIN mesh into a hollow 1-block-thick shell
+ * Voxelizes a closed BuildingShell mesh into a hollow 1-block-thick shell
  * using ray-casting (Möller–Trumbore intersection tests).
  */
 public final class BuildingShellVoxelizer {
