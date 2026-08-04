@@ -104,7 +104,7 @@ public class BuildingOutlineDataset extends TiledDataset<BVH<VectorGeometry>> im
             anyTileExists = true;
             break;
         }
-        if (!anyTileExists) return null;
+        if (!anyTileExists) return CompletableFuture.completedFuture(null);
 
         CompletableFuture<BVH<VectorGeometry>>[] futures = uncheckedCast(Arrays.stream(tiles).map(this::getAsync).toArray(CompletableFuture[]::new));
         return CompletableFuture.allOf(futures).thenApply(unused -> uncheckedCast(Arrays.stream(futures).map(CompletableFuture::join).toArray(BVH[]::new)));
