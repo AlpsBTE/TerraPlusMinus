@@ -90,11 +90,7 @@ paper {
     serverDependencies {
         register("FastAsyncWorldEdit") {
             load = PaperPluginDescription.RelativeLoadOrder.BEFORE
-            required = false
-        }
-        register("WorldEdit") {
-            load = PaperPluginDescription.RelativeLoadOrder.BEFORE
-            required = false
+            required = true
         }
     }
 }
