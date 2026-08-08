@@ -55,7 +55,6 @@ biomes:
 
 # Customize the default material for the surface
 surface_material: GRASS_BLOCK
-# -----------------------------------------------------
 
 # NOTE: Do not change
-config_version: 1.5
+config_version: 1.6

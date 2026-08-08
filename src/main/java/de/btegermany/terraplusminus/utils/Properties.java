@@ -52,5 +52,4 @@ public class Properties {
         public static final String CROSS_TELEPORTATION_CHANNEL = "terraplusminus:teleportbridge";
         public static final String PERMISSION_PREFIX = "t+-.";
     }
-
 }
