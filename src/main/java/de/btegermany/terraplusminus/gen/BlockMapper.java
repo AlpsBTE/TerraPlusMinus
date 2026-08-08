@@ -10,8 +10,8 @@ import org.bukkit.block.data.BlockData;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.Plugin;
 import org.jetbrains.annotations.Contract;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
+import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -63,7 +63,7 @@ public class BlockMapper {
         return this.genericSurfaceBlock;
     }
 
-    public static @NotNull Builder fromPlugin(@NotNull Plugin plugin) {
+    public static @NonNull Builder fromPlugin(@NonNull Plugin plugin) {
         return new Builder(plugin.getConfig(), plugin.getComponentLogger());
     }
 
@@ -78,7 +78,7 @@ public class BlockMapper {
             this.logger = logger;
         }
 
-        public Builder withConfiguredMapping(@NotNull Identifier materialId, @NotNull String configPath) {
+        public Builder withConfiguredMapping(@NonNull Identifier materialId, @NonNull String configPath) {
             Material material = this.readMaterialFromConfig(configPath);
             if (material == null) {
                 return this;
@@ -93,7 +93,7 @@ public class BlockMapper {
             return this.withStaticMapping(materialId, material);
         }
 
-        public Builder withConfiguredGenericSurface(@NotNull String configPath) {
+        public Builder withConfiguredGenericSurface(@NonNull String configPath) {
             Material material = this.readMaterialFromConfig(configPath);
             if (material == null) {
                 return this;
@@ -101,17 +101,17 @@ public class BlockMapper {
             return this.withStaticGenericSurface(material);
         }
 
-        public Builder withStaticGenericSurface(@NotNull Material material) {
+        public Builder withStaticGenericSurface(@NonNull Material material) {
             this.genericSurfaceBlock = material.createBlockData();
             return this;
         }
 
-        public Builder withConfiguredMapping(@NotNull String materialId, @NotNull String configPath) {
+        public Builder withConfiguredMapping(@NonNull String materialId, @NonNull String configPath) {
             Identifier identifier = Identifier.parse(materialId);  // Let this fail if invalid, that means devs are at fault
             return this.withConfiguredMapping(identifier, configPath);
         }
 
-        public Builder withStaticMapping(@NotNull Identifier materialId, @NotNull Material material) {
+        public Builder withStaticMapping(@NonNull Identifier materialId, @NonNull Material material) {
             this.logger.trace(
                     "Adding material replacement mapping {} -> {}",
                     materialId, material
@@ -120,7 +120,7 @@ public class BlockMapper {
             return this;
         }
 
-        private @Nullable Material readMaterialFromConfig(@NotNull String configPath) {
+        private @Nullable Material readMaterialFromConfig(@NonNull String configPath) {
             String materialName = this.configuration.getString(configPath);
             if (materialName == null) {
                 return null;
@@ -136,7 +136,7 @@ public class BlockMapper {
             return material;
         }
 
-        public @NotNull BlockMapper build() {
+        public @NonNull BlockMapper build() {
             return new BlockMapper(this.genericSurfaceBlock, this.mapping);
         }
     }

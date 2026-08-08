@@ -2,6 +2,7 @@ package de.btegermany.terraplusminus.events;
 
 import de.btegermany.terraplusminus.utils.ConfigurationHelper;
 import de.btegermany.terraplusminus.utils.LinkedWorld;
+import de.btegermany.terraplusminus.utils.Permission;
 import de.btegermany.terraplusminus.utils.Properties;
 import lombok.NonNull;
 import net.kyori.adventure.text.Component;
@@ -15,10 +16,10 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.scheduler.BukkitRunnable;
-import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -56,7 +57,7 @@ public class PlayerMoveEvent implements Listener {
     }
 
     @EventHandler
-    void onPlayerMove(org.bukkit.event.player.@NotNull PlayerMoveEvent event) {
+    void onPlayerMove(org.bukkit.event.player.@NonNull PlayerMoveEvent event) {
         Player player = event.getPlayer();
         if (plugin.getConfig().getBoolean(Properties.ACTIONBAR_HEIGHT)) setHeightInActionBar(player);
     }
@@ -69,7 +70,7 @@ public class PlayerMoveEvent implements Listener {
         }, 0, 20);
     }
 
-    private void setHeightInActionBar(@NotNull Player p) {
+    private void setHeightInActionBar(@NonNull Player p) {
         worldHashMap.putIfAbsent(p.getWorld().getName(), yOffsetConfigEntry);
         if (p.getInventory().getItemInMainHand().getType() != Material.DEBUG_STICK) {
             int height = p.getLocation().getBlockY() - worldHashMap.get(p.getWorld().getName());
@@ -85,14 +86,10 @@ public class PlayerMoveEvent implements Listener {
 
         Player p = event.getPlayer();
 
-        if (!p.hasPermission("t+-.autoteleport")) {
-            return;
-        }
+        if (Permission.AUTOTELEPORT.isGrantedTo(p)) return;
 
         // Prevent repeated scheduling while on cooldown
-        if (isOnTeleportCooldown(p)) {
-            return;
-        }
+        if (isOnTeleportCooldown(p)) return;
 
         World world = p.getWorld();
         Location location = p.getLocation();
@@ -121,12 +118,12 @@ public class PlayerMoveEvent implements Listener {
         }.runTaskLater(plugin, 60L);
     }
 
-    private void teleportPlayer(@NotNull LinkedWorld linkedWorld, @NotNull Location location, Player p) {
+    private void teleportPlayer(@NonNull LinkedWorld linkedWorld, @NonNull Location location, Player p) {
         setTeleportCooldown(p);
 
         World tpWorld = Bukkit.getWorld(linkedWorld.getWorldName());
 
-        Location newLocation = new Location(tpWorld, location.getX() + xOffset, tpWorld.getHighestBlockYAt(location.getBlockX(), location.getBlockZ()),
+        Location newLocation = new Location(tpWorld, location.getX() + xOffset, Objects.requireNonNull(tpWorld).getHighestBlockYAt(location.getBlockX(), location.getBlockZ()),
                 location.getZ() + zOffset, location.getYaw(), location.getPitch());
         p.teleportAsync(newLocation);
         if (p.getAllowFlight()) p.setFlying(true);

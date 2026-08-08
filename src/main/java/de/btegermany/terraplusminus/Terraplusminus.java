@@ -1,15 +1,10 @@
 package de.btegermany.terraplusminus;
 
-import static java.lang.String.format;
-import static net.daporkchop.lib.common.util.PValidation.checkState;
-
 import de.btegermany.terraplusminus.commands.DistortionCommand;
-import de.btegermany.terraplusminus.commands.GenerateBuildingCommand;
 import de.btegermany.terraplusminus.commands.OffsetCommand;
-import de.btegermany.terraplusminus.commands.ReloadBuildingsCommand;
 import de.btegermany.terraplusminus.commands.TpllCommand;
 import de.btegermany.terraplusminus.commands.WhereCommand;
-import de.btegermany.terraplusminus.events.PlayerCommandPreprocessEvent;
+import de.btegermany.terraplusminus.events.PlayerCommandEvent;
 import de.btegermany.terraplusminus.events.PlayerJoinEvent;
 import de.btegermany.terraplusminus.events.PlayerMoveEvent;
 import de.btegermany.terraplusminus.events.PluginMessageEvent;
@@ -19,10 +14,6 @@ import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.plugin.configuration.PluginMeta;
 import io.papermc.paper.plugin.lifecycle.event.LifecycleEventManager;
 import io.papermc.paper.plugin.lifecycle.event.types.LifecycleEvents;
-import java.io.*;
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Locale;
 import lombok.Getter;
 import lombok.Setter;
 import net.buildtheearth.terraminusminus.TerraConfig;
@@ -42,7 +33,15 @@ import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.Contract;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
+
+import java.io.*;
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Locale;
+
+import static java.lang.String.format;
+import static net.daporkchop.lib.common.util.PValidation.checkState;
 
 public final class Terraplusminus extends JavaPlugin implements Listener {
 
@@ -63,8 +62,6 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
     @Setter
     private String registeredServerName = null;
 
-    private GenerateBuildingCommand generateBuildingCommand;
-
     @Override
     public void onEnable() {
         new Metrics(this, 28392); // https://bstats.org/plugin/bukkit/Terraplusminus/28392
@@ -82,8 +79,6 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
         this.extractTerraConfigFileToPluginDir("/net/buildtheearth/terraminusminus/dataset/osm/osm.json5", "osm.json5");
         this.extractTerraConfigFileToPluginDir("config/readme-heights.md", "heights/README.md");
         this.extractTerraConfigFileToPluginDir("config/readme-tree_cover.md", "tree_cover/README.md");
-        this.extractTerraConfigFileToPluginDir("/config/building_outlines.json5", "building_outlines.json5");
-        this.extractTerraConfigFileToPluginDir("/config/building_shells.json5", "building_shells.json5");
 
         // Register plugin messaging channel
         PlayerHashMapManagement playerHashMapManagement = new PlayerHashMapManagement();
@@ -124,7 +119,7 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
         String passthroughTpll = getConfig().getString(Properties.PASSTHROUGH_TPLL);
         if (passthroughTpll != null && !passthroughTpll.isEmpty()) {
             Bukkit.getPluginManager().registerEvents(
-                    new PlayerCommandPreprocessEvent(passthroughTpll),
+                    new PlayerCommandEvent(passthroughTpll),
                     this
             );
         }
@@ -134,6 +129,8 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
                 getConfig().getBoolean("reduced_console_messages"); // Disables console log of fetching data
 
         registerCommands();
+
+        new Updater(this);
 
         this.getComponentLogger().info(
                 "Terraplusminus successfully enabled ({} v{}, {} v{})",
@@ -155,7 +152,7 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
     }
 
     @EventHandler
-    public void onWorldInit(@NotNull WorldInitEvent event) {
+    public void onWorldInit(@NonNull WorldInitEvent event) {
         World world = event.getWorld();
 
         boolean shouldInstallHeightDatapack =
@@ -173,8 +170,8 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
 
     @Contract("_, _ -> new")
     @Override
-    public @NotNull ChunkGenerator getDefaultWorldGenerator(
-            @NotNull String worldName,
+    public @NonNull ChunkGenerator getDefaultWorldGenerator(
+            @NonNull String worldName,
             String id
     ) {
         // Multiverse different y-offset support
@@ -198,7 +195,7 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
 
     public void enforceDatapackInstallation(
             String datapackResourcePath,
-            @NotNull World world
+            @NonNull World world
     ) {
         String datapackName = Path.of(datapackResourcePath)
                 .getFileName()
@@ -371,7 +368,7 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
                     """.replace("USE_DATASET", "" + differentBiomes)
             );
         }
-        }
+    }
 
     private void registerCommands() {
         LifecycleEventManager<Plugin> manager = this.getLifecycleManager();
@@ -402,29 +399,11 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
                     "Displays projection distortion at your current location",
                     new DistortionCommand()
             );
-
-            this.generateBuildingCommand = new GenerateBuildingCommand(this);
-            commands.register(
-                this.generateBuildingCommand.create(),
-                "generatebuilding",
-                List.of("genbldg")
-            );
-            commands.register(
-                    "reloadbuildings",
-                    "Reloads building datasets (outlines + shells) from disk.",
-                    new ReloadBuildingsCommand(this)
-            );
         });
     }
 
-    public void reloadBuildingDataset() {
-        if (this.generateBuildingCommand != null) {
-            this.generateBuildingCommand.reloadDataset();
-        }
-    }
-
     private void setupTerraMinusMinus() {
-        FolderMigrator.migrateTerraPlusPlusFolder();
+        FolderMigrator.migrateTerraPlusPlusFolder(getComponentLogger(), getDataFolder());
         Disk.setConfigRoot(this.getDataFolder());
         Disk.setCacheRoot(this.getDataPath().resolve("cache").toFile());
 
@@ -433,12 +412,12 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
         Http.userAgent(userAgent);
     }
 
-    private @NotNull String getVersion() {
+    private @NonNull String getVersion() {
         PluginMeta meta = this.getPluginMeta();
         return meta.getVersion();
     }
 
-    private @NotNull String createHttpUserAgent() {
+    private @NonNull String createHttpUserAgent() {
         PluginMeta metadata = this.getPluginMeta();
         return format(Locale.ENGLISH, "%s/%s (%s/%s; +%s)",
                 metadata.getName(),
@@ -449,7 +428,7 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
         );
     }
 
-    private void extractTerraConfigFileToPluginDir(@NotNull String resourcePath, @NotNull String dropPath) {
+    private void extractTerraConfigFileToPluginDir(@NonNull String resourcePath, @NonNull String dropPath) {
         File droppedFile = this.getDataPath().resolve(dropPath).toFile();
         if (droppedFile.exists()) {
             this.getComponentLogger().debug("Terra-- config file {} is already present in plugin directory", droppedFile.getAbsolutePath());

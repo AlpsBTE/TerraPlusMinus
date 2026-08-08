@@ -1,0 +1,46 @@
+# https://docs.gradle.org/current/userguide/platforms.html#sub::toml-dependencies-format
+[versions]
+# https://central.sonatype.com/artifact/org.bstats/bstats-bukkit
+bstats = "3.2.1"
+# @pin https://github.com/PorkStudios/PorkLib - needs to be the same as in TerraMinusMinus
+daporkchop-lib-common = "0.5.7"
+# https://central.sonatype.com/artifact/com.fasterxml.jackson.core/jackson-databind
+jackson-databind = "2.22.1"
+# @pin https://repo.papermc.io/#browse/browse:maven-snapshots:io%2Fpapermc%2Fpaper%2Fpaper-api Newer Versions require java 25
+paper-api = "1.21.11-R0.1-SNAPSHOT"
+# https://github.com/OakLoaf/PluginUpdater/releases https://repo.lushplugins.org/#/releases/org/lushplugins/pluginupdater/updater.paper-api
+pluginupdater = "3.0.0"
+# https://maven.smyler.net/#/releases/net/buildtheearth/terraminusminus/terraminusminus-bukkit - use fork which uses daporkchop lib as releases
+terraminusminus = "2.2.1-1.21.8"
+# https://jspecify.dev/docs/
+jspecify = "1.0.0"
+# https://javadoc.io/doc/org.jetbrains/annotations/latest/index.html
+jetbrains-annotations = "26.1.0"
+#
+# Plugins
+#
+# https://projectlombok.org/ https://plugins.gradle.org/plugin/io.freefair.lombok
+lombok = "9.5.0"
+# https://docs.eldoria.de/pluginyml/paper/#kotlin
+plugin-yml = "0.9.0"
+# https://plugins.gradle.org/plugin/org.sonarqube - for CI
+sonarqube = "7.3.1.8318"
+# https://github.com/GradleUp/shadow/releases
+shadow = "9.4.3"
+
+[libraries]
+bstats = { module = "org.bstats:bstats-bukkit", version.ref = "bstats" }
+daporkchop-lib-common = { module = "net.daporkchop.lib:common", version.ref = "daporkchop-lib-common" }
+jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson-databind" }
+paper-api = { module = "io.papermc.paper:paper-api", version.ref = "paper-api" }
+pluginupdater-paper = { module = "org.lushplugins.pluginupdater:updater.paper-api", version.ref = "pluginupdater" }
+pluginupdater-common = { module = "org.lushplugins.pluginupdater:updater.common-api", version.ref = "pluginupdater" }
+terraminusminus = { module = "net.buildtheearth.terraminusminus:terraminusminus-bukkit", version.ref = "terraminusminus" }
+jspecify = { module = "org.jspecify:jspecify", version.ref = "jspecify" }
+jetbrains-annotations = { module = "org.jetbrains:annotations", version.ref = "jetbrains-annotations" }
+
+[plugins]
+lombok = { id = "io.freefair.lombok", version.ref = "lombok" }
+plugin-yml = { id = "de.eldoria.plugin-yml.paper", version.ref = "plugin-yml" }
+sonarqube = { id = "org.sonarqube", version.ref = "sonarqube" }
+shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }

@@ -10,7 +10,7 @@ import net.kyori.adventure.key.Key;
 import org.bukkit.block.Biome;
 import org.bukkit.generator.BiomeProvider;
 import org.bukkit.generator.WorldInfo;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -27,15 +27,15 @@ public class CustomBiomeProvider extends BiomeProvider {
             Biome.FLOWER_FOREST, Biome.STONY_PEAKS, Biome.SAVANNA_PLATEAU, Biome.WOODED_BADLANDS, Biome.SNOWY_TAIGA, Biome.OLD_GROWTH_SPRUCE_TAIGA, Biome.SWAMP, Biome.OLD_GROWTH_PINE_TAIGA, Biome.FOREST, Biome.DARK_FOREST,
             Biome.TAIGA, Biome.FROZEN_PEAKS, Biome.SNOWY_PLAINS, Biome.ICE_SPIKES));
 
-    private GeographicProjection projection;
+    private final GeographicProjection projection;
 
     public CustomBiomeProvider(GeographicProjection projection) {
         this.projection = projection;
     }
 
-    @NotNull
+    @NonNull
     @Override
-    public Biome getBiome(@NotNull WorldInfo worldInfo, int x, int y, int z) {
+    public Biome getBiome(@NonNull WorldInfo worldInfo, int x, int y, int z) {
         if (Terraplusminus.config.getBoolean("biomes.use_dataset")) {
             double[] coords;
             try {
@@ -65,9 +65,9 @@ public class CustomBiomeProvider extends BiomeProvider {
         return biomeData;
     }
 
-    @NotNull
+    @NonNull
     @Override
-    public List<Biome> getBiomes(@NotNull WorldInfo worldInfo) {
+    public List<Biome> getBiomes(@NonNull WorldInfo worldInfo) {
         return biomeList;
     }
 

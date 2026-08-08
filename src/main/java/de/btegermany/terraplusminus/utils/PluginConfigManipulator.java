@@ -1,7 +1,7 @@
 package de.btegermany.terraplusminus.utils;
 
 import org.bukkit.plugin.Plugin;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 import java.io.*;
 import java.nio.file.Path;
@@ -45,7 +45,7 @@ public class PluginConfigManipulator {
         this.transformLinesContaining(needle, l -> new String[] {l, content});
     }
 
-    private void transformLinesContaining(String needle, Function<@NotNull String, @NotNull String[]> transformer) {
+    private void transformLinesContaining(String needle, Function<@NonNull String, @NonNull String[]> transformer) {
         Path inputFile = this.plugin.getDataPath().resolve("config.yml");
         Path tempFile = this.plugin.getDataPath().resolve("temp.yml");
         try (

@@ -1,6 +1,7 @@
 package de.btegermany.terraplusminus.commands;
 
 import de.btegermany.terraplusminus.gen.RealWorldGenerator;
+import de.btegermany.terraplusminus.utils.Permission;
 import io.papermc.paper.command.brigadier.BasicCommand;
 import io.papermc.paper.command.brigadier.CommandSourceStack;
 import net.buildtheearth.terraminusminus.projection.GeographicProjection;
@@ -8,28 +9,21 @@ import net.buildtheearth.terraminusminus.projection.OutOfProjectionBoundsExcepti
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.World;
+import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 import org.bukkit.generator.ChunkGenerator;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 public class DistortionCommand implements BasicCommand {
 
     @Override
-    public void execute(@NotNull CommandSourceStack stack, String @NotNull [] args) {
+    public boolean canUse(final @NonNull CommandSender sender) {
+        return sender instanceof Player && Permission.DISTORTION_CMD.isGrantedTo(sender);
+    }
 
-        if (!(stack.getSender() instanceof Player player)) {
-            stack.getSender().sendMessage(
-                    Component.text("Players only.", NamedTextColor.RED)
-            );
-            return;
-        }
-
-        if (!player.hasPermission("t+-.distortion")) {
-            player.sendMessage(
-                    Component.text("No permission.", NamedTextColor.RED)
-            );
-            return;
-        }
+    @Override
+    public void execute(@NonNull CommandSourceStack stack, String @NonNull [] args) {
+        if (!(stack.getSender() instanceof Player player)) return; // Will not happen because of Brigadier
 
         World world = player.getWorld();
         ChunkGenerator generator = world.getGenerator();

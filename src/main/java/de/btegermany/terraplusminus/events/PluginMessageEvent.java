@@ -8,7 +8,7 @@ import de.btegermany.terraplusminus.utils.Properties;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.messaging.PluginMessageListener;
-import org.jetbrains.annotations.NotNull;
+import org.jspecify.annotations.NonNull;
 
 import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
@@ -27,7 +27,7 @@ public class PluginMessageEvent implements PluginMessageListener {
     }
 
     @Override
-    public void onPluginMessageReceived(@NotNull String channel, @NotNull Player player, byte @NotNull [] message) {
+    public void onPluginMessageReceived(@NonNull String channel, @NonNull Player player, byte @NonNull [] message) {
         tpm.getComponentLogger().debug("Received plugin message on channel: {}", channel);
         if (channel.equals(Properties.NonConfigurable.CROSS_TELEPORTATION_CHANNEL)) {
             DataInputStream in = new DataInputStream(new ByteArrayInputStream(message));

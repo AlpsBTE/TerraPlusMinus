@@ -1,6 +1,6 @@
 package de.btegermany.terraplusminus.utils;
 
-import de.btegermany.terraplusminus.Terraplusminus;
+import net.kyori.adventure.text.logger.slf4j.ComponentLogger;
 import org.codehaus.plexus.util.FileUtils;
 
 import java.io.File;
@@ -9,8 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 public class FolderMigrator {
-    public static void migrateTerraPlusPlusFolder() {
-        var logger = Terraplusminus.instance.getComponentLogger();
+    public static void migrateTerraPlusPlusFolder(ComponentLogger logger, File dataFolder) {
         // Migrate Terra-- v1 / TerraPlusPlus files if needed
         File terraDir = new File("terraplusplus");
         if (!terraDir.exists()) return;
@@ -22,8 +21,8 @@ public class FolderMigrator {
         if (entries != null) {
             logger.info("Migrating Terra-- v1 config from terraplusplus/config");
             for (File entry : entries) {
-                Path dest = new File(Terraplusminus.instance.getDataFolder(), entry.getName()).toPath();
-                if (!migrateDirectory(entry.toPath(), dest)) {
+                Path dest = new File(dataFolder, entry.getName()).toPath();
+                if (!migrateDirectory(entry.toPath(), dest, logger)) {
                     migrationSuccessful = false;
                 }
             }
@@ -50,8 +49,7 @@ public class FolderMigrator {
         }
     }
 
-    private static boolean migrateDirectory(Path source, Path dest) {
-        var logger = Terraplusminus.instance.getComponentLogger();
+    private static boolean migrateDirectory(Path source, Path dest, ComponentLogger logger) {
         try {
             if (!Files.exists(dest)) {
                 try {
@@ -97,7 +95,7 @@ public class FolderMigrator {
                     continue;
                 }
 
-                if (!migrateDirectory(childSource, childDest) && wasSuccessful) {
+                if (!migrateDirectory(childSource, childDest, logger) && wasSuccessful) {
                     wasSuccessful = false;
                 }
             }

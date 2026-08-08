@@ -1,4 +1,4 @@
-name: Build any Analyze Terra+-
+name: Build and Analyze Terra+-
 
 on:
   push:
@@ -6,43 +6,50 @@ on:
   pull_request:
     branches: [ main ]
 
-
 jobs:
   build:
     name: Build and analyze
     runs-on: ubuntu-latest
-    
+
     steps:
-      - uses: actions/checkout@v6
+      - name: Check out repository
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
       - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           java-version: 21
-          distribution: 'temurin'
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
       - name: Cache SonarQube packages
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.sonar/cache
           key: ${{ runner.os }}-sonar
-          restore-keys: ${{ runner.os }}-sonar
-      - name: Cache Maven packages
-        uses: actions/cache@v5
-        with:
-          path: ~/.m2
-          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
-          restore-keys: ${{ runner.os }}-m2
+          restore-keys: |
+            ${{ runner.os }}-sonar
+
       - name: Build
-        run: mvn -B verify
-      - name: Build and analyze
+        run: ./gradlew build
+
+      - name: Analyze with SonarQube
         if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        run: mvn -B org.sonarsource.scanner.maven:sonar-maven-plugin:sonar -Dsonar.projectKey=BTE-Germany_TerraPlusMinus_776220d7-94a3-47ab-a1af-0f299952ab48 -Dsonar.projectName='TerraPlusMinus'
-      - name: Upload a Build Artifact
+        run: >
+          ./gradlew sonar
+          -Dsonar.projectKey=BTE-Germany_TerraPlusMinus_776220d7-94a3-47ab-a1af-0f299952ab48
+          -Dsonar.projectName=TerraPlusMinus
+
+      - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
           name: Nightly-Build
-          path: target/terraplusminus*.jar
+          path: build/libs/Terraplusminus*.jar
+          if-no-files-found: error
