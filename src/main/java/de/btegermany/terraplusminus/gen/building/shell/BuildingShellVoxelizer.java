@@ -1,34 +1,62 @@
 package de.btegermany.terraplusminus.gen.building.shell;
 
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 import lombok.NonNull;
 import net.buildtheearth.terraminusminus.projection.GeographicProjection;
 import net.buildtheearth.terraminusminus.projection.OutOfProjectionBoundsException;
 
 /**
- * Voxelizes a BuildingShell mesh into a hollow 1-block-thick shell using
- * the generalized winding number (sum of signed solid angles).
+ * Voxelizes a BuildingShell mesh into a hollow 1-block-thick shell.
+ * <p>
+ * The voxelizer first checks the mesh's winding number and samples a 3x3x3 grid.
+ * If the sample result is ambiguous (so if the mesh is just unclean), we fall back to a multi ray voting scheme,
+ * else we use the generalized winding number (sum of signed solid angles).
  */
 public final class BuildingShellVoxelizer {
 
-    // Winding number threshold: sum >= 2π means the point is inside the mesh.
     private static final double TWO_PI = 2.0d * Math.PI;
 
-    // Quantization grid for vertex welding after projection (in Minecraft blocks).
+    // lower bound for the preflight sample, after which we fall back to ray casting
+    private static final double AMBIGUOUS_LOW = Math.PI / 4.0d;
+
+    private static final int RAY_COUNT = 5;
+    private static final double[][] RAY_DIRECTIONS = generateFibonacciSphere();
+    private static final int RAY_VOTE_THRESHOLD = (RAY_COUNT + 1) / 2;
+
     private static final double VERTEX_WELD_GRID = 1.0e-3d;
+    private static final double EPSILON = 1e-6d;
 
     /**
-     * Voxelizes a building shell into Minecraft block positions.
+     * Generates well-separated unit directions on the unit sphere using a spherical Fibonacci spiral.
+     * Ref: <a href="https://observablehq.com/@meetamit/fibonacci-lattices">Fibonacci Lattices</a>
+     */
+    private static double[][] generateFibonacciSphere() {
+        double[][] dirs = new double[BuildingShellVoxelizer.RAY_COUNT][3];
+        double goldenAngle = Math.PI * (3.0d - Math.sqrt(5.0d));
+        for (int i = 0; i < BuildingShellVoxelizer.RAY_COUNT; i++) {
+            double y = 1.0d - 2.0d * (i + 0.5d) / BuildingShellVoxelizer.RAY_COUNT;
+            double r = Math.sqrt(1.0d - y * y);
+            double phi = i * goldenAngle;
+            dirs[i][0] = r * Math.cos(phi);
+            dirs[i][1] = y;
+            dirs[i][2] = r * Math.sin(phi);
+        }
+        return dirs;
+    }
+
+    /**
+     * voxelizes a {@code BuildingShell} into block positions
      *
-     * @param shell      the building shell in WGS84
-     * @param projection WGS84 → Minecraft x/z projection
-     * @param yOffset    added to elevations
+     * @param shell      the shell to voxelize
+     * @param projection the projection to use
+     * @param yOffset    elevation offset
      * @return block positions forming the hollow shell
      */
     public static Set<BlockPos> voxelize(@NonNull BuildingShell shell, @NonNull GeographicProjection projection, int yOffset) {
-        // Project vertices and weld duplicates to close seams from the nonlinear projection.
-        java.util.Map<LongPoint, Vec3> weldMap = new java.util.HashMap<>();
+        Map<LongPoint, Vec3> weldMap = new HashMap<>();
         Triangle[] mcTriangles = new Triangle[shell.triangles().size()];
         int triIdx = 0;
         double minX = Double.POSITIVE_INFINITY;
@@ -73,19 +101,10 @@ public final class BuildingShellVoxelizer {
         int endY = (int) Math.ceil(maxY) + 1;
         int endZ = (int) Math.ceil(maxZ) + 1;
 
-        // Phase 1: classify inside/outside per block via winding number.
-        boolean[][][] inside = new boolean[endX - startX + 1][endY - startY + 1][endZ - startZ + 1];
+        // classify inside/outside per block
+        boolean[][][] inside = getInsideBlocks(startX, startY, startZ, endX, endY, endZ, validTriangles);
 
-        for (int bx = startX; bx <= endX; bx++) {
-            for (int by = startY; by <= endY; by++) {
-                for (int bz = startZ; bz <= endZ; bz++) {
-                    inside[bx - startX][by - startY][bz - startZ] =
-                        computeWindingNumber(bx + 0.5d, by + 0.5d, bz + 0.5d, validTriangles) >= TWO_PI;
-                }
-            }
-        }
-
-        // Phase 2: extract surface blocks (inside with at least one outside neighbor).
+        // extract surface blocks (inside with at least one outside neighbor)
         Set<BlockPos> shellBlocks = new HashSet<>();
         int dx = endX - startX;
         int dy = endY - startY;
@@ -114,9 +133,73 @@ public final class BuildingShellVoxelizer {
     }
 
     /**
+     * Samples a 3×3×3 grid of points to check whether the winding number produces clean results.
+     * Returns true if the winding number is safe to use (no ambiguous values), false if the mesh needs ray-casting fallback.
+     */
+    private static boolean preflightWindingNumber(
+            int startX, int startY, int startZ,
+            int endX, int endY, int endZ,
+            Triangle[] mesh
+    ) {
+        double[] fracs = { 0.25d, 0.5d, 0.75d };
+        for (double fx : fracs) {
+            for (double fy : fracs) {
+                for (double fz : fracs) {
+                    double ox = startX + fx * (endX - startX);
+                    double oy = startY + fy * (endY - startY);
+                    double oz = startZ + fz * (endZ - startZ);
+                    double w = computeWindingNumber(ox, oy, oz, mesh);
+                    if (w >= AMBIGUOUS_LOW && w < TWO_PI) return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Classifies all blocks in the given bound as either inside or outside the given mesh.
+     * Uses the generalized winding number if the mesh is clean, or multi ray voting if not.
+     * @return boolean values for whether each block is inside or not
+     */
+    private static boolean[][][] getInsideBlocks(
+            int startX, int startY, int startZ,
+            int endX, int endY, int endZ,
+            Triangle[] mesh
+    ) {
+        // check if the winding number produces clean results for this mesh
+        boolean useWindingNumber = preflightWindingNumber(startX, startY, startZ, endX, endY, endZ, mesh);
+
+        boolean[][][] inside = new boolean[endX - startX + 1][endY - startY + 1][endZ - startZ + 1];
+
+        for (int bx = startX; bx <= endX; bx++) {
+            for (int by = startY; by <= endY; by++) {
+                for (int bz = startZ; bz <= endZ; bz++) {
+                    double ox = bx + 0.5d;
+                    double oy = by + 0.5d;
+                    double oz = bz + 0.5d;
+
+                    // generalized winding number
+                    if (useWindingNumber) {
+                        inside[bx - startX][by - startY][bz - startZ] = computeWindingNumber(ox, oy, oz, mesh) >= TWO_PI;
+                        continue;
+                    }
+
+                    // multi ray voting
+                    int votes = 0;
+                    for (double[] dir : RAY_DIRECTIONS) {
+                        if ((countRayIntersections(ox, oy, oz, dir[0], dir[1], dir[2], mesh) % 2) != 1) continue;
+                        votes++;
+                    }
+                    inside[bx - startX][by - startY][bz - startZ] = votes >= RAY_VOTE_THRESHOLD;
+                }
+            }
+        }
+        return inside;
+    }
+
+    /**
      * Generalized winding number via the Van Oosterom–Strackee solid angle formula.
-     * Returns 4π for points inside a closed mesh, 0 outside, with a continuous
-     * threshold at 2π for imperfect meshes.
+     * Ref: <a href="https://en.wikipedia.org/wiki/Solid_angle">Solid Angle</a>
      */
     private static double computeWindingNumber(double ox, double oy, double oz, Triangle[] triangles) {
         double sum = 0.0d;
@@ -130,12 +213,10 @@ public final class BuildingShellVoxelizer {
             double lenC = Math.sqrt(cx * cx + cy * cy + cz * cz);
             if (lenA < 1e-12d || lenB < 1e-12d || lenC < 1e-12d) continue;
 
-            // numerator = A*(B*C)
             double numerator = ax * (by * cz - bz * cy)
                              + ay * (bz * cx - bx * cz)
                              + az * (bx * cy - by * cx);
 
-            // denominator = |A|*|B|*|C| + (A*B)*|C| + (B*C)*|A| + (C*A)*|B|
             double denominator = lenA * lenB * lenC
                 + (ax * bx + ay * by + az * bz) * lenC
                 + (bx * cx + by * cy + bz * cz) * lenA
@@ -148,14 +229,51 @@ public final class BuildingShellVoxelizer {
         return Math.abs(sum);
     }
 
-    /** Snap a vertex to the quantization grid and deduplicate. */
+    /**
+     * Counts ray-mesh intersections via Möller–Trumbore.
+     * Ref: <a href="https://en.wikipedia.org/wiki/M%C3%B6ller%E2%80%93Trumbore_intersection_algorithm">Möller-Trumbore intersection algorithm</a>
+     */
+    private static int countRayIntersections(
+        double ox, double oy, double oz,
+        double dx, double dy, double dz,
+        Triangle[] triangles
+    ) {
+        int count = 0;
+        for (Triangle tri : triangles) {
+            if (rayIntersectsTriangle(ox, oy, oz, dx, dy, dz, tri)) count++;
+        }
+        return count;
+    }
+
+    private static boolean rayIntersectsTriangle(
+        double ox, double oy, double oz,
+        double dx, double dy, double dz,
+        Triangle tri
+    ) {
+        double e1x = tri.v1.x - tri.v0.x, e1y = tri.v1.y - tri.v0.y, e1z = tri.v1.z - tri.v0.z;
+        double e2x = tri.v2.x - tri.v0.x, e2y = tri.v2.y - tri.v0.y, e2z = tri.v2.z - tri.v0.z;
+        double hx = dy * e2z - dz * e2y, hy = dz * e2x - dx * e2z, hz = dx * e2y - dy * e2x;
+        double a = e1x * hx + e1y * hy + e1z * hz;
+        if (Math.abs(a) < EPSILON) return false;
+        double f = 1.0d / a;
+        double sx = ox - tri.v0.x, sy = oy - tri.v0.y, sz = oz - tri.v0.z;
+        double u = f * (sx * hx + sy * hy + sz * hz);
+        if (u < 0.0d || u > 1.0d) return false;
+        double qx = sy * e1z - sz * e1y, qy = sz * e1x - sx * e1z, qz = sx * e1y - sy * e1x;
+        double v = f * (dx * qx + dy * qy + dz * qz);
+        if (v < 0.0d || u + v > 1.0d) return false;
+        return f * (e2x * qx + e2y * qy + e2z * qz) > EPSILON;
+    }
+
+    /**
+     * Snap a vertex to the quantization grid and deduplicate.
+     */
     private static Vec3 weldVertex(java.util.Map<LongPoint, Vec3> weldMap, double x, double y, double z) {
         long gx = Math.round(x / VERTEX_WELD_GRID);
         long gy = Math.round(y / VERTEX_WELD_GRID);
         long gz = Math.round(z / VERTEX_WELD_GRID);
         LongPoint key = new LongPoint(gx, gy, gz);
-        return weldMap.computeIfAbsent(key,
-            k -> new Vec3(gx * VERTEX_WELD_GRID, gy * VERTEX_WELD_GRID, gz * VERTEX_WELD_GRID));
+        return weldMap.computeIfAbsent(key, k -> new Vec3(gx * VERTEX_WELD_GRID, gy * VERTEX_WELD_GRID, gz * VERTEX_WELD_GRID));
     }
 
     private record Vec3(double x, double y, double z) {}
