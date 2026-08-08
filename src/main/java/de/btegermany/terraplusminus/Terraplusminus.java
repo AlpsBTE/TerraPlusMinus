@@ -1,7 +1,9 @@
 package de.btegermany.terraplusminus;
 
 import de.btegermany.terraplusminus.commands.DistortionCommand;
+import de.btegermany.terraplusminus.commands.GenerateBuildingCommand;
 import de.btegermany.terraplusminus.commands.OffsetCommand;
+import de.btegermany.terraplusminus.commands.ReloadBuildingsCommand;
 import de.btegermany.terraplusminus.commands.TpllCommand;
 import de.btegermany.terraplusminus.commands.WhereCommand;
 import de.btegermany.terraplusminus.events.PlayerCommandEvent;
@@ -62,6 +64,8 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
     @Setter
     private String registeredServerName = null;
 
+    private GenerateBuildingCommand generateBuildingCommand;
+
     @Override
     public void onEnable() {
         new Metrics(this, 28392); // https://bstats.org/plugin/bukkit/Terraplusminus/28392
@@ -79,6 +83,8 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
         this.extractTerraConfigFileToPluginDir("/net/buildtheearth/terraminusminus/dataset/osm/osm.json5", "osm.json5");
         this.extractTerraConfigFileToPluginDir("config/readme-heights.md", "heights/README.md");
         this.extractTerraConfigFileToPluginDir("config/readme-tree_cover.md", "tree_cover/README.md");
+        this.extractTerraConfigFileToPluginDir("/config/building_outlines.json5", "building_outlines.json5");
+        this.extractTerraConfigFileToPluginDir("/config/building_shells.json5", "building_shells.json5");
 
         // Register plugin messaging channel
         PlayerHashMapManagement playerHashMapManagement = new PlayerHashMapManagement();
@@ -399,7 +405,25 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
                     "Displays projection distortion at your current location",
                     new DistortionCommand()
             );
+
+            this.generateBuildingCommand = new GenerateBuildingCommand(this);
+            commands.register(
+                    this.generateBuildingCommand.create(),
+                    "generatebuilding",
+                    List.of("genbldg")
+            );
+            commands.register(
+                    "reloadbuildings",
+                    "Reloads building datasets (outlines + shells) from disk.",
+                    new ReloadBuildingsCommand(this)
+            );
         });
+    }
+
+    public void reloadBuildingDataset() {
+        if (this.generateBuildingCommand != null) {
+            this.generateBuildingCommand.reloadDataset();
+        }
     }
 
     private void setupTerraMinusMinus() {
