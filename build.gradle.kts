@@ -72,12 +72,19 @@ paper {
     apiVersion = "1.21"
 
     load = BukkitPluginDescription.PluginLoadOrder.STARTUP
-    authors = listOf("meysster", "Nudlsupp", "Nachwahl", "Zoriot")
+    authors = listOf("meysster", "Nudlsupp", "Nachwahl", "Zoriot", "R3tuxn")
 
     prefix = "T+-"
 
     loader = "de.btegermany.terraplusminus.PluginLibrariesLoader"
     generateLibrariesJson = true // https://docs.eldoria.de/pluginyml/libraries/#paper
+
+    permissions {
+        register("t+-.autoteleport") {
+            description = "Enables automatic teleportation between linked worlds."
+            default = BukkitPluginDescription.Permission.Default.TRUE
+        }
+    }
 }
 
 tasks {

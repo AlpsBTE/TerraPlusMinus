@@ -17,7 +17,7 @@ public final class ConfigurationHelper {
     public static List<LinkedWorld> convertList(@NonNull List<Map<?, ?>> originalList) {
         return originalList.stream()
                 .map(ConfigurationHelper::convertMapToLinkedWorld)
-                .filter(world -> !world.getWorldName().equalsIgnoreCase("another_world/server") || !world.getWorldName().equalsIgnoreCase("current_world/server"))
+                .filter(world -> !world.getWorldName().equalsIgnoreCase("world/server") || !world.getWorldName().equalsIgnoreCase("another_world/server") || !world.getWorldName().equalsIgnoreCase("current_world/server"))
                 .collect(Collectors.toList());
     }
 
