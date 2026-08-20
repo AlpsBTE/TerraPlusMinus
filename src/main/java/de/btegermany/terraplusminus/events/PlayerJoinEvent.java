@@ -10,6 +10,8 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.jspecify.annotations.NonNull;
 
+import java.util.UUID;
+
 public class PlayerJoinEvent implements Listener {
     final PlayerHashMapManagement playerHashMapManagement;
     final Terraplusminus plugin;
@@ -30,9 +32,10 @@ public class PlayerJoinEvent implements Listener {
                 event.getPlayer().sendPluginMessage(plugin, "BungeeCord", out.toByteArray());
             }, 20);
         }
-        if (playerHashMapManagement.containsPlayer(event.getPlayer())) {
-            event.getPlayer().performCommand("tpll " + playerHashMapManagement.getCoordinates(event.getPlayer()));
-            playerHashMapManagement.removePlayer(event.getPlayer());
+        UUID playerId = event.getPlayer().getUniqueId();
+        if (playerHashMapManagement.containsPlayer(playerId)) {
+            event.getPlayer().performCommand("tpll " + playerHashMapManagement.getCoordinates(playerId));
+            playerHashMapManagement.removePlayer(playerId);
         }
     }
 }

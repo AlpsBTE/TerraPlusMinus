@@ -82,21 +82,18 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
 
         // Register plugin messaging channel
         PlayerHashMapManagement playerHashMapManagement = new PlayerHashMapManagement();
-        this.getServer().getMessenger().registerOutgoingPluginChannel(this, "bungeecord:terraplusminus");
-
         PluginMessageEvent pluginMessageListener =
                 new PluginMessageEvent(playerHashMapManagement, this);
 
-        this.getServer().getMessenger().registerIncomingPluginChannel(
-                this,
-                "bungeecord:terraplusminus",
-                pluginMessageListener
-        );
-
         // Linked Server current server initialization
         if (getConfig().getBoolean(Properties.LINKED_WORLDS_ENABLED)
-                && getConfig().getString(Properties.LINKED_WORLDS_METHOD, "").equalsIgnoreCase("SERVER")) {
+                && getConfig().getString(Properties.LINKED_WORLDS_METHOD, "").equalsIgnoreCase(Properties.NonConfigurable.METHOD_SRV)) {
 
+            // Talks to TerraPlusMinusProxyBridge on the proxy, which listens and answers on the same channel.
+            this.getServer().getMessenger().registerOutgoingPluginChannel(this, Properties.NonConfigurable.CROSS_TELEPORTATION_CHANNEL);
+            this.getServer().getMessenger().registerIncomingPluginChannel(this, Properties.NonConfigurable.CROSS_TELEPORTATION_CHANNEL, pluginMessageListener);
+
+            // Used once per session to ask the proxy for this server's name.
             this.getServer().getMessenger().registerOutgoingPluginChannel(this, "BungeeCord");
             this.getServer().getMessenger().registerIncomingPluginChannel(this, "BungeeCord", pluginMessageListener);
             getComponentLogger().debug("Linked server initialization successful");
