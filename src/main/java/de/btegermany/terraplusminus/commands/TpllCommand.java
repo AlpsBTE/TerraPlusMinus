@@ -301,10 +301,13 @@ public class TpllCommand {
 
                 Terraplusminus.instance.getComponentLogger().debug("Chunk is already generated, fetching height from Heightmap...");
 
-                int newHeight = tpWorld.getHighestBlockYAt((int) x, (int) z) + 1;
+                int highestBlockY = tpWorld.getHighestBlockYAt((int) x, (int) z);
+                if (highestBlockY >= tpWorld.getMaxHeight() - 1 || highestBlockY <= tpWorld.getMinHeight())
+                    return false;
+
                 finalizeTeleport(target,
                         linkedWorld,
-                        new Vector(x, newHeight, z),
+                        new Vector(x, highestBlockY + 1, z),
                         latLngHeight.latLng(),
                         yOffset);
                 return true;
