@@ -7,9 +7,11 @@ import org.bukkit.generator.ChunkGenerator;
 import org.bukkit.plugin.Plugin;
 import org.jspecify.annotations.NonNull;
 
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -42,8 +44,17 @@ public final class LinkedWorldLayout {
 
     private final List<LinkedWorld> worlds;
 
+    /**
+     * Name to position, so {@link #indexOf(String)} stays a single lookup.
+     */
+    private final Map<String, Integer> indexByName;
+
     private LinkedWorldLayout(List<LinkedWorld> worlds) {
         this.worlds = worlds;
+        this.indexByName = new HashMap<>(worlds.size());
+        for (int i = 0; i < worlds.size(); i++) {
+            this.indexByName.putIfAbsent(worlds.get(i).getWorldName().toLowerCase(Locale.ROOT), i);
+        }
     }
 
     /**
@@ -65,12 +76,7 @@ public final class LinkedWorldLayout {
      * @return the index of the given world in the linked setup, or {@link #NOT_LINKED}
      */
     public int indexOf(String worldName) {
-        for (int i = 0; i < this.worlds.size(); i++) {
-            if (this.worlds.get(i).getWorldName().equalsIgnoreCase(worldName)) {
-                return i;
-            }
-        }
-        return NOT_LINKED;
+        return this.indexByName.getOrDefault(worldName.toLowerCase(Locale.ROOT), NOT_LINKED);
     }
 
     public boolean hasNext(int index) {
