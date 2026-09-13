@@ -5,10 +5,15 @@ import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public final class ConfigurationHelper {
+
+    private static final Set<String> PLACEHOLDER_NAMES =
+            Set.of("world/server", "another_world/server", "current_world/server");
 
     private ConfigurationHelper() {
         throw new IllegalStateException();
@@ -17,7 +22,7 @@ public final class ConfigurationHelper {
     public static List<LinkedWorld> convertList(@NonNull List<Map<?, ?>> originalList) {
         return originalList.stream()
                 .map(ConfigurationHelper::convertMapToLinkedWorld)
-                .filter(world -> !world.getWorldName().equalsIgnoreCase("world/server") || !world.getWorldName().equalsIgnoreCase("another_world/server") || !world.getWorldName().equalsIgnoreCase("current_world/server"))
+                .filter(world -> !PLACEHOLDER_NAMES.contains(world.getWorldName().toLowerCase(Locale.ROOT)))
                 .collect(Collectors.toList());
     }
 

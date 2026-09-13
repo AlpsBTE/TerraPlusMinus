@@ -28,10 +28,6 @@ public class PlayerHashMapManagement {
         players.invalidate(playerId);
     }
 
-    public boolean containsPlayer(@NonNull UUID playerId) {
-        return players.getIfPresent(playerId) != null;
-    }
-
     public @Nullable String getCoordinates(@NonNull UUID playerId) {
         return players.getIfPresent(playerId);
     }

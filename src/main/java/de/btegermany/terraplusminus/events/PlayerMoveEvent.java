@@ -32,22 +32,20 @@ public class PlayerMoveEvent implements Listener {
 
     /**
      * A player who ends up this many blocks below their world's downward trigger was dragged past it
-     * by a lag spike. The transition is then forced, ignoring the cooldown. Kept well inside the
-     * 64 blocks of void a player survives below the world floor, because a band that uses the full
-     * world height has nothing but that void underneath it.
+     * by a lag spike. The transition is then forced, ignoring the cooldown (but not a transition
+     * that is already running).
      */
     private static final int FAILSAFE_MARGIN = 32;
 
     /**
-     * 20 ticks. Long enough to keep a player from bouncing between two worlds, short enough to not
-     * be noticeable while falling.
+     * 20 ticks. Long enough to keep a player from bouncing between two worlds.
      */
     private static final long TELEPORT_COOLDOWN_MS = 1000;
 
     /**
-     * Cooldown after a transition that decided against moving the player. Short, because they are
-     * standing at the boundary and the next step has to be judged again, but long enough that a
-     * plateau at the build limit does not cost a chunk lookup and a column scan every single tick.
+     * Cooldown after a transition that decided against moving the player. Short, because the next
+     * step has to be judged again, but long enough that a plateau at the build limit is not
+     * rescanned every tick.
      */
     private static final long RETRY_COOLDOWN_MS = 250;
 
@@ -81,16 +79,15 @@ public class PlayerMoveEvent implements Listener {
     private final Plugin plugin;
     private final HashMap<String, Integer> worldHashMap;
     private final LinkedWorldLayout layout;
+
     private final Cache<UUID, Boolean> teleportCooldowns = CacheBuilder.newBuilder()
             .expireAfterWrite(TELEPORT_COOLDOWN_MS, TimeUnit.MILLISECONDS)
             .build();
+
     private final Cache<UUID, Boolean> retryCooldowns = CacheBuilder.newBuilder()
             .expireAfterWrite(RETRY_COOLDOWN_MS, TimeUnit.MILLISECONDS)
             .build();
 
-    /**
-     * Players whose transition has been started but not finished yet.
-     */
     private final Cache<UUID, Boolean> transitionsInFlight = CacheBuilder.newBuilder()
             .expireAfterWrite(TRANSITION_TIMEOUT_MS, TimeUnit.MILLISECONDS)
             .build();
@@ -126,9 +123,8 @@ public class PlayerMoveEvent implements Listener {
         if (!this.linkedWorldsActive) return;
 
         // Transitions only ever happen on a block boundary, so skip the vast majority of move events.
-        // Horizontal steps count as well: a world clips terrain that reaches past its build limit, so
-        // the boundary is walkable as a flat plateau and crossing into a column that continues in the
-        // world above never changes the player's height.
+        // Horizontal steps count too: terrain clipped by a world's build limit makes the boundary a
+        // walkable plateau, and crossing it never changes the player's height.
         if (!event.hasChangedBlock()) return;
 
         handleWorldTransition(player, event.getTo());
@@ -190,21 +186,21 @@ public class PlayerMoveEvent implements Listener {
     }
 
     /**
-     * Upwards the player usually enters the target world right at the seam of a mountain that was
-     * clipped off by the current world's build limit, so they are placed on top of the target column
-     * rather than at the converted height.
+     * Upwards the player usually enters the target world at the seam of a mountain that was clipped
+     * off by the current world's build limit, so they are placed on top of the target column rather
+     * than at the converted height.
      * <p>
-     * The transition is called off when the world above turns out to have no terrain at that column:
-     * the player is then simply standing on top of their own world's terrain, and handing them over
-     * would drop them straight back through the boundary - the bouncing this used to cause is why
-     * the decision is made after the column scan rather than before it. Only a player who has risen
-     * {@link #FREE_ASCENT_MARGIN} blocks clear of the boundary is moved up regardless, since they
-     * are flying rather than walking and everything above belongs to the world above.
+     * The transition is called off when that column has no terrain at all: the player is then just
+     * standing on top of their own world's terrain and would drop straight back through the
+     * boundary. Only a player who is {@link #FREE_ASCENT_MARGIN} blocks clear of it is moved up
+     * regardless, since they are flying rather than walking.
      */
     private void transitionUp(@NonNull Player player, @NonNull Location from, int index, @NonNull World current) {
         World target = resolve(player, layout.get(index + 1));
         if (target == null) return;
 
+        int blockX = from.getBlockX();
+        int blockZ = from.getBlockZ();
         // Where the boundary elevation lands in the target world - the bottom of its usable band.
         int bandBottom = layout.downwardThreshold(index + 1, current);
         int convertedY = layout.convertY(from.getBlockY(), index, index + 1);
@@ -212,13 +208,11 @@ public class PlayerMoveEvent implements Listener {
 
         beginTransition(player);
         setTeleportCooldown(player);
-        int blockX = from.getBlockX();
-        int blockZ = from.getBlockZ();
 
         plugin.getComponentLogger().debug("Moving {} up from '{}' (y {}) into '{}'",
                 player.getName(), current.getName(), from.getBlockY(), target.getName());
 
-        // Preload the target chunk - the column scan below needs its blocks.
+        // The column scan below needs the target chunk's blocks.
         target.getChunkAtAsyncUrgently(blockX >> 4, blockZ >> 4).whenComplete((chunk, error) -> onMainThread(() -> {
             if (!stillTransitioning(player, current, error)) return;
 
@@ -233,9 +227,8 @@ public class PlayerMoveEvent implements Listener {
                 return;
             }
 
-            // Never below the converted height: everything the target world holds under its band is a
-            // duplicate of terrain the player has just left, and dropping them onto it would undo
-            // their climb. A column that is empty up there keeps their elevation exactly.
+            // Never below the converted height: what the target world holds under its band duplicates
+            // the terrain the player just left, and dropping them onto it would undo their climb.
             int y = Math.max(convertedY, surfaceY + 1);
             completeTransition(player, target, from, freeSpaceAt(target, blockX, y, blockZ));
         }));
@@ -248,12 +241,12 @@ public class PlayerMoveEvent implements Listener {
     private void transitionDown(@NonNull Player player, @NonNull Location from, int index, @NonNull World target,
                                 boolean failsafe) {
         World current = player.getWorld();
-
-        beginTransition(player);
-        setTeleportCooldown(player);
         int blockX = from.getBlockX();
         int blockZ = from.getBlockZ();
         int convertedY = layout.convertY(from.getBlockY(), index, index - 1);
+
+        beginTransition(player);
+        setTeleportCooldown(player);
 
         plugin.getComponentLogger().debug("Moving {} down from '{}' (y {}) into '{}' at y {}{}",
                 player.getName(), current.getName(), from.getBlockY(), target.getName(), convertedY,
@@ -266,13 +259,9 @@ public class PlayerMoveEvent implements Listener {
     }
 
     /**
-     * Whether the transition that is waiting on a chunk should still go ahead. A cold chunk can take
-     * a while on a busy server, and in that time the player may have logged off or been sent
-     * somewhere else entirely - teleporting them out of wherever they ended up would be worse than
-     * doing nothing.
-     *
-     * @param source the world the transition started in
-     * @param error  the failure the chunk load ended with, if any
+     * Whether a transition that was waiting on a chunk should still go ahead. The player may have
+     * logged off or been sent somewhere else in the meantime, and teleporting them out of wherever
+     * they ended up would be worse than doing nothing.
      */
     private boolean stillTransitioning(@NonNull Player player, @NonNull World source, @Nullable Throwable error) {
         if (error != null) {
@@ -289,9 +278,8 @@ public class PlayerMoveEvent implements Listener {
     }
 
     /**
-     * X and Z are carried over unchanged. {@code terrain_offset.x/z} is a generation offset that
-     * applies to every linked world alike, so adding it here would shift the player sideways on
-     * every transition.
+     * X and Z are carried over unchanged: {@code terrain_offset.x/z} applies to every linked world
+     * alike, so adding it here would shift the player sideways on every transition.
      */
     private void completeTransition(@NonNull Player player, @NonNull World target, @NonNull Location from, int y) {
         Location destination = new Location(target, from.getX(), y, from.getZ(), from.getYaw(), from.getPitch());
@@ -301,9 +289,6 @@ public class PlayerMoveEvent implements Listener {
                     endTransition(player);
                     if (error != null || !Boolean.TRUE.equals(success) || !player.isOnline()) return;
 
-                    // Restarted here and not only when the transition began: a cold chunk can take
-                    // longer than the cooldown itself, and the window afterwards is the one that has
-                    // to stay quiet.
                     setTeleportCooldown(player);
                     motion.restoreOn(player);
                     player.sendMessage(plugin.getConfig().getString(Properties.CHAT_PREFIX) + "§7You have been teleported to another world.");
@@ -311,16 +296,12 @@ public class PlayerMoveEvent implements Listener {
     }
 
     /**
-     * How the player was moving when they were handed over. A teleport drops the player out of
-     * flight and clears their motion, so both have to be put back afterward (but only as they were:
-     * forcing flight on made anyone with flight permission take off after simply walking across a
-     * world boundary).
+     * How the player was moving when they were handed over. A teleport clears their motion and drops
+     * them out of flight, so both are put back afterwards.
      */
     private record Motion(@NonNull Vector velocity, boolean flying) {
 
-        /**
-         * Vanilla terminal velocity, in blocks per tick.
-         */
+        // Vanilla velocity, in blocks per tick.
         private static final double MAX_SPEED = 3.92;
 
         static @NonNull Motion of(@NonNull Player player) {
@@ -335,8 +316,7 @@ public class PlayerMoveEvent implements Listener {
 
         void restoreOn(@NonNull Player player) {
             if (this.flying) {
-                // A flying player is driven by their own client; pushing a velocity onto them only
-                // fights it, and the velocity that survives a lag spike is the wrong one anyway.
+                // A flying player is driven by their own client, so a velocity only fights it.
                 if (player.getAllowFlight()) player.setFlying(true);
                 return;
             }
@@ -354,9 +334,8 @@ public class PlayerMoveEvent implements Listener {
     }
 
     /**
-     * Paper completes both {@code getChunkAtAsyncUrgently} and {@code teleportAsync} on the server
-     * thread, but block access and {@link Player#setVelocity(Vector)} would blow up if that ever
-     * changed.
+     * Paper completes both futures on the server thread, but block access and
+     * {@link Player#setVelocity(Vector)} would blow up if that ever changed.
      */
     private void onMainThread(@NonNull Runnable action) {
         if (Bukkit.isPrimaryThread()) {
@@ -381,8 +360,8 @@ public class PlayerMoveEvent implements Listener {
 
     /**
      * Moves the given height up until the player fits, so a transition can never drop somebody into
-     * terrain. Needed in both directions: the world below reaches all the way up to its own terrain
-     * limit, so a mountain can occupy exactly the converted height.
+     * terrain. Needed in both directions: the world below reaches up to its own build limit, so a
+     * mountain can occupy exactly the converted height.
      */
     private static int freeSpaceAt(@NonNull World world, int x, int y, int z) {
         int min = world.getMinHeight() + 1;
@@ -400,8 +379,7 @@ public class PlayerMoveEvent implements Listener {
 
     /**
      * Treats everything outside the world's height range as free space: a player may stand above the
-     * build limit even though no block can exist there, and {@link World#getBlockAt(int, int, int)}
-     * has no meaningful answer for those heights.
+     * build limit even though no block can exist there.
      */
     private static boolean isPassableAt(@NonNull World world, int x, int y, int z) {
         if (y < world.getMinHeight() || y >= world.getMaxHeight()) return true;

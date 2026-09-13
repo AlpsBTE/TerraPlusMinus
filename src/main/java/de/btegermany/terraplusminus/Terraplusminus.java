@@ -103,9 +103,10 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
         // Registering events
         Bukkit.getPluginManager().registerEvents(this, this);
 
-        if (getConfig().getBoolean("height_in_actionbar")
+        // The listener carries both the action bar and the Multiverse transitions.
+        if (getConfig().getBoolean(Properties.ACTIONBAR_HEIGHT)
                 || (getConfig().getBoolean(Properties.LINKED_WORLDS_ENABLED)
-                && getConfig().getString(Properties.LINKED_WORLDS_METHOD, "").equalsIgnoreCase("MULTIVERSE"))) {
+                && getConfig().getString(Properties.LINKED_WORLDS_METHOD, "").equalsIgnoreCase(Properties.NonConfigurable.METHOD_MV))) {
             Bukkit.getPluginManager().registerEvents(new PlayerMoveEvent(this), this);
         }
 
