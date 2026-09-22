@@ -40,7 +40,6 @@ import org.jspecify.annotations.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 
 import static org.bukkit.ChatColor.RED;
 
@@ -202,7 +201,7 @@ public class TpllCommand {
      * @param yOff      The configured Y-offset - used for calculating the new right height
      */
     private static void handleLinkedWorlds(Player target, boolean isNext, LatLng geoCoords, @NonNull Vector mcCoords, double yOff) {
-        handleLinkedWorlds(target, isNext, geoCoords, mcCoords, yOff, target.getWorld().getName());
+        handleLinkedWorlds(target, isNext, geoCoords, mcCoords, yOff, target.getWorld().getName(), 0);
     }
 
     /**
@@ -216,8 +215,9 @@ public class TpllCommand {
      * @param mcCoords  The calculated Minecraft X/Y/Z coordinates
      * @param yOff      The configured Y-offset - used for calculating the new right height
      * @param worldName The name of the current world. Used for cross-world teleportation.
+     * @param depth     Number of worlds already traversed, guards against misconfigured offsets.
      */
-    private static void handleLinkedWorlds(Player target, boolean isNext, LatLng geoCoords, @NonNull Vector mcCoords, double yOff, String worldName) {
+    private static void handleLinkedWorlds(Player target, boolean isNext, LatLng geoCoords, @NonNull Vector mcCoords, double yOff, String worldName, int depth) {
         String method = Terraplusminus.config.getString(Properties.LINKED_WORLDS_METHOD, "");
         if (!Terraplusminus.config.getBoolean(Properties.LINKED_WORLDS_ENABLED) ||
                 !(method.equalsIgnoreCase(Properties.NonConfigurable.METHOD_SRV) || method.equalsIgnoreCase(Properties.NonConfigurable.METHOD_MV))) {
@@ -228,19 +228,29 @@ public class TpllCommand {
         if (method.equalsIgnoreCase(Properties.NonConfigurable.METHOD_SRV)) {
             sendPluginMessageToBungeeBridge(isNext, target, geoCoords);
         } else if (method.equalsIgnoreCase(Properties.NonConfigurable.METHOD_MV)) {
+            if (depth >= ConfigurationHelper.getWorlds().size()) {
+                target.sendMessage(prefix + "§cThese coordinates cannot be reached on this server.");
+                Terraplusminus.instance.getComponentLogger().warn("No suitable linked world found for {} at height {}, check the linked world offsets.", target.getName(), mcCoords.getY());
+                return;
+            }
             LinkedWorld linked = isNext ? ConfigurationHelper.getNextServerName(worldName) : ConfigurationHelper.getPreviousServerName(worldName);
             if (linked == null) {
                 target.sendMessage(prefix + RED + "No linked world found!");
                 return;
             }
             World linkedWorld = Bukkit.getWorld(linked.getWorldName());
+            if (linkedWorld == null) {
+                target.sendMessage(prefix + "§cThis location is currently unavailable. Please try again later.");
+                Terraplusminus.instance.getComponentLogger().warn("Linked world '{}' is not loaded, cannot teleport {}.", linked.getWorldName(), target.getName());
+                return;
+            }
             double newHeight = mcCoords.getY() - yOff + linked.getOffset() + 1;
 
-            if (newHeight > Objects.requireNonNull(linkedWorld, "Linked world was removed from Bukkit").getMaxHeight()) {
-                handleLinkedWorlds(target, true, geoCoords, new Vector(mcCoords.getX(), newHeight, mcCoords.getZ()), linked.getOffset(), linkedWorld.getName());
+            if (newHeight > linkedWorld.getMaxHeight()) {
+                handleLinkedWorlds(target, true, geoCoords, new Vector(mcCoords.getX(), newHeight, mcCoords.getZ()), linked.getOffset(), linkedWorld.getName(), depth + 1);
                 return;
             } else if (newHeight <= linkedWorld.getMinHeight()) {
-                handleLinkedWorlds(target, false, geoCoords, new Vector(mcCoords.getX(), newHeight, mcCoords.getZ()), linked.getOffset(), linkedWorld.getName());
+                handleLinkedWorlds(target, false, geoCoords, new Vector(mcCoords.getX(), newHeight, mcCoords.getZ()), linked.getOffset(), linkedWorld.getName(), depth + 1);
                 return;
             }
 
