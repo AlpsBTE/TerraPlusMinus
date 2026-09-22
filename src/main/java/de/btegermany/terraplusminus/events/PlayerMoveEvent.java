@@ -285,6 +285,7 @@ public class PlayerMoveEvent implements Listener {
     private void completeTransition(@NonNull Player player, @NonNull World target, @NonNull Location from, int y) {
         Location destination = new Location(target, from.getX(), y, from.getZ(), from.getYaw(), from.getPitch());
         Motion motion = Motion.of(player);
+        player.sendMessage(plugin.getConfig().getString(Properties.CHAT_PREFIX) + "§7Teleporting to linked world...");
         player.teleportAsync(destination, PlayerTeleportEvent.TeleportCause.PLUGIN)
                 .whenComplete((success, error) -> onMainThread(() -> {
                     endTransition(player);
@@ -292,7 +293,6 @@ public class PlayerMoveEvent implements Listener {
 
                     setTeleportCooldown(player);
                     motion.restoreOn(player);
-                    player.sendMessage(plugin.getConfig().getString(Properties.CHAT_PREFIX) + "§7You have been teleported to another world.");
                 }));
     }
 

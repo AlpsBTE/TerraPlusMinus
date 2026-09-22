@@ -107,7 +107,7 @@ public class TpllCommand {
             }
 
             if (terraGenerator == null) {
-                sender.sendMessage(prefix + "§cThis is not a Terraplusmins world.");
+                sender.sendMessage(prefix + "§cYou cannot use /tpll in this world.");
                 Terraplusminus.instance.getComponentLogger().warn("This is not a Terraplusminus world: {}." +
                         "The world generator must be set to Terraplusminus for T+- to work." +
                         "Remove the permission t+-.tpll for this world if you don't want to see this warning.", tpWorld.getName());
@@ -180,7 +180,7 @@ public class TpllCommand {
                                     latLngHeight.latLng(),
                                     yOffset
                             )).exceptionally(ex -> {
-                        target.sendMessage(RED + "Error while fetching elevation from API!");
+                        target.sendMessage(prefix + RED + "This location is currently unavailable. Please try again later.");
                         Terraplusminus.instance.getComponentLogger().error("Error while fetching elevation from API for tpll!", ex);
                         return null;
                     });
@@ -221,7 +221,7 @@ public class TpllCommand {
         String method = Terraplusminus.config.getString(Properties.LINKED_WORLDS_METHOD, "");
         if (!Terraplusminus.config.getBoolean(Properties.LINKED_WORLDS_ENABLED) ||
                 !(method.equalsIgnoreCase(Properties.NonConfigurable.METHOD_SRV) || method.equalsIgnoreCase(Properties.NonConfigurable.METHOD_MV))) {
-            target.sendMessage(prefix + RED + "World height limit reached!");
+            target.sendMessage(prefix + RED + "These coordinates cannot be reached on this server.");
             return;
         }
 
@@ -235,7 +235,7 @@ public class TpllCommand {
             }
             LinkedWorld linked = isNext ? ConfigurationHelper.getNextServerName(worldName) : ConfigurationHelper.getPreviousServerName(worldName);
             if (linked == null) {
-                target.sendMessage(prefix + RED + "No linked world found!");
+                target.sendMessage(prefix + RED + "These coordinates cannot be reached on this server.");
                 return;
             }
             World linkedWorld = Bukkit.getWorld(linked.getWorldName());
@@ -303,7 +303,7 @@ public class TpllCommand {
             if (world.getWorldName().equalsIgnoreCase(tpWorld.getName())) {
                 World linkedWorld = Bukkit.getWorld(world.getWorldName());
                 if (linkedWorld == null) {
-                    target.sendMessage(prefix + RED + "Linked world not found!");
+                    target.sendMessage(prefix + RED + "This location is currently unavailable. Please try again later.");
                     return false;
                 }
                 if (!linkedWorld.isChunkGenerated(ChunkPos.blockToCube((int) Math.round(x)), ChunkPos.blockToCube((int) Math.round(z))))
@@ -364,13 +364,14 @@ public class TpllCommand {
         if (server != null) {
             out.writeUTF(server.getWorldName() + ", " + server.getOffset());
         } else {
-            player.sendMessage(prefix + "§cPlease contact server administrator. Your config is not set up correctly.");
+            player.sendMessage(prefix + "§cThis location is currently unavailable. Please try again later.");
+            Terraplusminus.instance.getComponentLogger().warn("No linked server found for {} from '{}', check the linked worlds configuration.", player.getName(), plugin.getRegisteredServerName());
             return;
         }
         out.writeUTF(geoCoords.getLat() + ", " + geoCoords.getLng());
         player.sendPluginMessage(plugin, Properties.NonConfigurable.CROSS_TELEPORTATION_CHANNEL, out.toByteArray());
 
-        player.sendMessage(prefix + "§cSending to another server...");
+        player.sendMessage(prefix + "§7Teleporting to linked server...");
     }
     // </editor-fold>
 
