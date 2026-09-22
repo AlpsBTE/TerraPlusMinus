@@ -72,6 +72,7 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
         this.saveDefaultConfig();
         config = getConfig();
         this.updateConfig();
+        ConfigurationHelper.load();
         // --------------------------
 
         // Set-up Terra-- so it looks for its config files in our plugin dir, and then copy its default files there
