@@ -115,12 +115,13 @@ public class PlayerMoveEvent implements Listener {
         if (actionBarEnabled) startKeepActionBarAlive();
     }
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler
     void onPlayerMove(org.bukkit.event.player.@NonNull PlayerMoveEvent event) {
         Player player = event.getPlayer();
         if (actionBarEnabled) setHeightInActionBar(player);
 
-        if (!this.linkedWorldsActive) return;
+        // A canceled move must not trigger a world transition.
+        if (!this.linkedWorldsActive || event.isCancelled()) return;
 
         // Transitions only ever happen on a block boundary, so skip the vast majority of move events.
         // Horizontal steps count too: terrain clipped by a world's build limit makes the boundary a
