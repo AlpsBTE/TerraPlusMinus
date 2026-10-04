@@ -80,7 +80,7 @@ paper {
     apiVersion = "1.21"
 
     load = BukkitPluginDescription.PluginLoadOrder.STARTUP
-    authors = listOf("meysster", "Nudlsupp", "Nachwahl", "Zoriot")
+    authors = listOf("meysster", "Nudlsupp", "Nachwahl", "Zoriot", "R3tuxn")
 
     prefix = "T+-"
 
@@ -91,6 +91,13 @@ paper {
         register("FastAsyncWorldEdit") {
             load = PaperPluginDescription.RelativeLoadOrder.BEFORE
             required = true
+        }
+    }
+
+    permissions {
+        register("t+-.autoteleport") {
+            description = "Enables automatic teleportation between linked worlds."
+            default = BukkitPluginDescription.Permission.Default.TRUE
         }
     }
 }
