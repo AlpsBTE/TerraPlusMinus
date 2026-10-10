@@ -16,8 +16,6 @@ import net.buildtheearth.terraminusminus.generator.EarthGeneratorSettings;
 import net.buildtheearth.terraminusminus.generator.data.TreeCoverBaker;
 import net.buildtheearth.terraminusminus.substitutes.BlockState;
 import net.buildtheearth.terraminusminus.substitutes.ChunkPos;
-import net.daporkchop.lib.common.reference.ReferenceStrength;
-import net.daporkchop.lib.common.reference.cache.Cached;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -40,7 +38,8 @@ import java.util.concurrent.ExecutionException;
 
 public class TreePopulator extends BlockPopulator {
 
-    public static final Cached<byte[]> RNG_CACHE = Cached.threadLocal(() -> new byte[16 * 16], ReferenceStrength.SOFT);
+    // Placement attempts per chunk, each succeeding with the tree chance of the block it lands on
+    private static final int TREE_ATTEMPTS_PER_CHUNK = (16 >> 1) * (16 >> 1);
     public final LoadingCache<ChunkPos, CompletableFuture<CachedChunkData>> cache;
     private final EarthGeneratorSettings bteGeneratorSettings = EarthGeneratorSettings.parse(EarthGeneratorSettings.BTE_DEFAULT_SETTINGS);
     ChunkDataLoader loader = new ChunkDataLoader(bteGeneratorSettings);
@@ -116,55 +115,55 @@ public class TreePopulator extends BlockPopulator {
             try {
                 CachedChunkData data = this.loader.load(new ChunkPos(x - (xOffset / 16), z - (zOffset / 16))).get();
 
+                // Tree chance per block (index x * 16 + z), 0-255
                 byte[] treeCover = data.getCustom(EarthGeneratorPipelines.KEY_DATA_TREE_COVER, TreeCoverBaker.FALLBACK_TREE_DENSITY);
-                byte[] rng = RNG_CACHE.get();
 
-                for (int i = 0, dx = 0; dx < 16 >> 1; dx++) {
-                    for (int dz = 0; dz < 16 >> 1; dz++, i++) {
-                        if ((rng[i] & 0xFF) < (treeCover[(0)] & 0xFF)) {
-                            random.nextBytes(rng);
+                for (int attempt = 0; attempt < TREE_ATTEMPTS_PER_CHUNK; attempt++) {
+                    int valueX = random.nextInt(15) + 1; // Depending on the size of the tree this should be changed
+                    int valueZ = random.nextInt(15) + 1;
 
-                            int valueX = random.nextInt(15) + 1; // Depending on the size of the tree this should be changed
-                            int valueZ = random.nextInt(15) + 1;
-                            int groundY = 0;
-                            int waterY = 0;
-                            BlockState state = data.surfaceBlock(0, 0);
+                    // Use the tree chance of the block the tree would be placed on
+                    if (random.nextInt(256) >= (treeCover[valueX * 16 + valueZ] & 0xFF)) {
+                        continue;
+                    }
 
-                            try {
-                                groundY = data.groundHeight(valueX, valueZ);
-                                waterY = data.waterHeight(valueX, valueZ);
-                                state = data.surfaceBlock(valueX, valueZ);
-                            } catch (IndexOutOfBoundsException e) {
-                                Terraplusminus.instance.getComponentLogger().warn(
-                                        "Chunk boundary overflow when attempting to generate a tree at chunk {}/{}",
-                                        x, z
-                                );
-                            }
+                    int groundY = 0;
+                    int waterY = 0;
+                    BlockState state = data.surfaceBlock(0, 0);
 
-                            if (groundY < waterY) {
-                                return;
-                            }
+                    try {
+                        groundY = data.groundHeight(valueX, valueZ);
+                        waterY = data.waterHeight(valueX, valueZ);
+                        state = data.surfaceBlock(valueX, valueZ);
+                    } catch (IndexOutOfBoundsException e) {
+                        Terraplusminus.instance.getComponentLogger().warn(
+                                "Chunk boundary overflow when attempting to generate a tree at chunk {}/{}",
+                                x, z
+                        );
+                    }
 
-                            Location loc = new Location(world, valueX + x * 16, groundY + 1 + yOffset, valueZ + z * 16); // is offset missing?
-                            if (groundY + yOffset < world.getMaxHeight() - 35 && groundY + yOffset > world.getMinHeight() && state == null) {
-                                switch ((int) customBiomeProvider.getBiome()) {
-                                    case 4, 6, 17: // desert and savanna
-                                        generateCustomTree(limitedRegion, loc, "savanna");
-                                        break;
-                                    case 14, 15: // flower forest
-                                        generateCustomTree(limitedRegion, loc, "oak", "birch");
-                                        break;
-                                    case 27: // taiga
-                                        generateCustomTree(limitedRegion, loc, "spruce");
-                                        break;
-                                    case 28, 29, 30: // snowy regions
-                                        // TODO: trees with snow
-                                        break;
-                                    default:
-                                        generateCustomTree(limitedRegion, loc, "oak", "birch");
-                                        break;
-                                }
-                            }
+                    if (groundY < waterY) {
+                        continue;
+                    }
+
+                    Location loc = new Location(world, valueX + x * 16, groundY + 1 + yOffset, valueZ + z * 16); // is offset missing?
+                    if (groundY + yOffset < world.getMaxHeight() - 35 && groundY + yOffset > world.getMinHeight() && state == null) {
+                        switch ((int) customBiomeProvider.getBiome()) {
+                            case 4, 6, 17: // desert and savanna
+                                generateCustomTree(limitedRegion, loc, "savanna");
+                                break;
+                            case 14, 15: // flower forest
+                                generateCustomTree(limitedRegion, loc, "oak", "birch");
+                                break;
+                            case 27: // taiga
+                                generateCustomTree(limitedRegion, loc, "spruce");
+                                break;
+                            case 28, 29, 30: // snowy regions
+                                // TODO: trees with snow
+                                break;
+                            default:
+                                generateCustomTree(limitedRegion, loc, "oak", "birch");
+                                break;
                         }
                     }
                 }
