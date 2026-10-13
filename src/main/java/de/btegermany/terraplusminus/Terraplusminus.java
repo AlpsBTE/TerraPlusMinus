@@ -375,6 +375,46 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
                     """.replace("USE_DATASET", "" + differentBiomes)
             );
         }
+        if (configVersion == 1.5) {
+            getConfig().set("config_version", 1.6);
+            this.saveConfig();
+        }
+        if (configVersion == 1.6) {
+            getConfig().set("config_version", 1.7);
+            this.saveConfig();
+            manipulator.addLineAbove(
+                    "biomes:",
+                    """
+                    # If enabled, land cover data from land_cover.json5 and OSM can be used to filter surface patterns and tree generation.
+                    land_cover_enabled: true
+
+                    # Skip tree generation on these land-cover types.
+                    # Valid types: WATER, FOREST, GRASSLAND, CROPLAND, WETLAND, URBAN, BARE_ROCK, SCREE, SHINGLE, SAND, GLACIER, SNOW
+                    tree_land_cover_blacklist:
+                      - GLACIER
+
+                    """
+            );
+            manipulator.addLineAbove(
+                    "# NOTE: Do not change",
+                    """
+                    # Customize the material for the base blocks below the surface
+                    base_material: STONE
+
+                    # If enabled, snow is generated based on height/slope/azimuth
+                    # Heights are real-world meters
+                    snow_generation:
+                      enabled: true
+                      min_height: 2800        # No snow below this height
+                      aspect_bonus: 250       # Bonus for pole-facing slopes (in meters)
+                      height_mid: 3300        # Effective height where the slope limit is midway
+                      slope_min: 15           # Minimum slope limit at low effective heights (degrees)
+                      slope_range: 55         # Additional slope limit headroom at high heights (degrees)
+                      slope_steepness: 0.0035 # Steepness of the sigmoid transition
+
+                    """
+            );
+        }
     }
 
     private void registerCommands() {

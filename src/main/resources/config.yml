@@ -84,4 +84,4 @@ snow_generation:
   slope_steepness: 0.0035 # Steepness of the sigmoid transition
 
 # NOTE: Do not change
-config_version: 1.6
+config_version: 1.7
