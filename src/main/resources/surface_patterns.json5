@@ -1,0 +1,167 @@
+/*
+ * TERRA+- SURFACE PATTERNS
+ *
+ * WorldPainter-like surface materials for terrain generation: weighted block mixes
+ * ("strata") that are applied to every exposed block of the terrain - surface tops
+ * as well as cliff faces - based on real-world height and terrain steepness, with
+ * priority-based resolution when several patterns match.
+ *
+ * This file is extracted into the plugin folder on the first server start. It is read once
+ * when the world generator is created, so changes require a server restart.
+ *
+ * General rules:
+ *
+ *  - Patterns apply to exposed blocks: the block on top of a terrain column, and every
+ *    block of the column that is exposed on its flank (cliff faces, terraces, steps).
+ *    Hidden ground below the finite strata stays the base material.
+ *
+ *  - Heights ("min_height"/"max_height") are real-world meters above sea level, NOT
+ *    minecraft world coordinates. They are matched per block: a cliff face is matched
+ *    block by block, so patterns can form bands along a wall (e.g. snow high up, scree
+ *    at the foot). The same thresholds apply in every linked world, regardless of each
+ *    world's terrain offset.
+ *
+ *  - Slope ("min_slope"/"max_slope") is the terrain angle in degrees from the horizontal
+ *    (0 = flat, 90 = vertical cliff). Surface tops are measured over the "slope_radius"
+ *    around the column; a column's flank is measured towards the neighbor that exposes
+ *    it. Both bounds are optional.
+ *
+ *  - Strata are the block layers beneath the surface, and they are revealed wherever
+ *    the terrain is cut open: the block N blocks below a column's surface shows the Nth
+ *    stratum - on the surface itself, and on cliff faces alike. Omit "depth" on the last
+ *    stratum to make it unbounded: it then covers arbitrarily deep cliff faces, but is
+ *    never written into hidden ground.
+ *
+ *  - Each stratum is a weighted mix of blocks; "weight" is relative and defaults to 1.
+ *    The mix entry is chosen per block in one of two modes:
+ *      "random"    a deterministic per-block value: a speckled mix, like WorldPainter's
+ *                  block mixes (default)
+ *      "noise"     deterministic noise: coherent patches of the same block; on cliff
+ *                  faces these read as vertical strata bands. "noise_scale" sets the
+ *                  patch size in blocks (default 64), "noise_3d" makes the patches
+ *                  volumetric.
+ *
+ *  - Chosen blocks are pure functions of their position and the pattern name: mixes are
+ *    identical across restarts, and across linked worlds with the same x/z offsets.
+ *    Give patterns distinct names to get distinct noise patches.
+ *
+ *  - OSM data (roads, paths) and building outlines always have priority over surface
+ *    patterns on the blocks they occupy; cliff faces below those blocks are still
+ *    painted. LoD building shells are placed independently and are never touched.
+ *
+ *  - Blocks under water are handled globally and cannot be configured per pattern:
+ *    grass-like surface blocks are always replaced with dirt, as without patterns.
+ *
+ *  - Blocks are written as "namespace:block_id", optionally with properties,
+ *    e.g. "minecraft:oak_leaves[persistent=true]".
+ */
+
+{
+    // Master switch for surface patterns. When false, terrain is generated exactly like
+    // it always was: a single surface block on top of solid stone.
+    "enabled": false,
+
+    // How many blocks in each horizontal direction are used to measure the terrain slope.
+    // The real-world elevation data is quantized to whole blocks, so measurable angles come
+    // in steps; larger radii allow finer thresholds at the cost of averaging over a wider area:
+    //   radius 2 -> angles in ~14.0° steps
+    //   radius 4 -> ~7.1° steps (default)
+    //   radius 8 -> ~3.6° steps
+    // Must be between 1 and 16.
+    "slope_radius": 4,
+
+    // The list of patterns. Each entry supports the following fields:
+    //   "name"        optional, used in log messages and to derive mix seeds
+    //   "priority"    optional, defaults to 0; among matching patterns, higher wins
+    //   "min_height"  optional, real-world meters above sea level
+    //   "max_height"  optional, real-world meters above sea level
+    //   "min_slope"   optional, degrees from horizontal (default 0)
+    //   "max_slope"   optional, degrees from horizontal (default unbounded)
+    //   "land_cover_whitelist" optional, list of canonical land-cover type names; the pattern
+    //                          only applies on these types (e.g. ["GLACIER"])
+    //   "land_cover_blacklist" optional, list of canonical land-cover type names; the pattern
+    //                          never applies on these types (e.g. ["URBAN", "WATER"])
+    //   "strata"      required, the block layers beneath the surface:
+    //                   "blocks"     required, the weighted block mix of the layer
+    //                   "depth"      optional, the layer's thickness in blocks; omit it on
+    //                                the last layer to make it unbounded
+    //                   "mode"       optional, "random" (default) or "noise"
+    //                   "noise_scale" optional, patch size in blocks (default 64)
+    //                   "noise_3d"   optional, volumetric patches instead of vertical bands
+    "patterns": [
+        {
+            // Topsoil on gentle terrain. The strata wrap around terraces and steps:
+            // a two-block step shows grass on its lip and dirt on its flank.
+            "name": "soil",
+            "priority": -100.0,
+            "max_slope": 30.0,
+            "strata": [
+                { "blocks": [ { "block": "minecraft:grass_block" } ], "depth": 1 },
+                { "blocks": [ { "block": "minecraft:dirt", "weight": 9 },
+                              { "block": "minecraft:coarse_dirt", "weight": 1 } ], "depth": 3 }
+            ]
+        },
+        {
+            // Sandy areas near sea level, on mostly flat ground
+            "name": "beach",
+            "priority": 5.0,
+            "min_height": -3,
+            "max_height": 8,
+            "max_slope": 7.0,
+            "strata": [
+                { "blocks": [ { "block": "minecraft:sand" } ], "depth": 3 },
+                { "blocks": [ { "block": "minecraft:sandstone" } ], "depth": 3 }
+            ]
+        },
+        {
+            // Bare rock on steep terrain, at any height. The last stratum has no "depth",
+            // so it is unbounded: its speckled mix covers entire cliff faces, no matter
+            // how tall, all the way down to the foot of the wall.
+            "name": "rock",
+            "priority": 10.0,
+            "min_slope": 30.0,
+            "strata": [
+                { "blocks": [ { "block": "minecraft:stone", "weight": 55 },
+                              { "block": "minecraft:andesite", "weight": 25 },
+                              { "block": "minecraft:cobblestone", "weight": 10 },
+                              { "block": "minecraft:gravel", "weight": 10 } ] }
+            ]
+        },
+        {
+            // Scree: a band of rubble at the foot of steep walls, matched by its own
+            // height and overriding the rock pattern at lower elevations
+            "name": "scree",
+            "priority": 15.0,
+            "min_slope": 30.0,
+            "min_height": 1400,
+            "max_height": 1800,
+            "strata": [
+                { "blocks": [ { "block": "minecraft:gravel", "weight": 6 },
+                              { "block": "minecraft:andesite", "weight": 4 } ] }
+            ]
+        },
+        {
+            // Above the treeline: coherent snow patches instead of speckle, in noise mode.
+            // The 2D noise reads as vertical strata bands on cliff faces.
+            "name": "alpine",
+            "priority": 20.0,
+            "min_height": 2200,
+            "strata": [
+                { "blocks": [ { "block": "minecraft:stone", "weight": 7 },
+                              { "block": "minecraft:snow_block", "weight": 3 } ],
+                  "mode": "noise",
+                  "noise_scale": 96 }
+            ]
+        },
+        {
+            // Glacier ice wherever the land cover dataset (or OSM) says there is a glacier.
+            "name": "glacier",
+            "priority": 25.0,
+            "land_cover_whitelist": ["GLACIER"],
+            "strata": [
+                { "blocks": [ { "block": "minecraft:snow_block" } ], "depth": 2 },
+                { "blocks": [ { "block": "minecraft:ice" }] }
+            ]
+        }
+    ]
+}

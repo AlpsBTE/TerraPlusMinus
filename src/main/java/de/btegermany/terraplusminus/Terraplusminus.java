@@ -82,6 +82,7 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
         // Set-up Terra-- so it looks for its config files in our plugin dir, and then copy its default files there
         this.setupTerraMinusMinus();
         this.extractTerraConfigFileToPluginDir("/net/buildtheearth/terraminusminus/dataset/osm/osm.json5", "osm.json5");
+        this.extractTerraConfigFileToPluginDir("/surface_patterns.json5", "surface_patterns.json5");
         this.extractTerraConfigFileToPluginDir("config/readme-heights.md", "heights/README.md");
         this.extractTerraConfigFileToPluginDir("config/readme-tree_cover.md", "tree_cover/README.md");
         this.extractTerraConfigFileToPluginDir("/config/building_outlines.json5", "building_outlines.json5");

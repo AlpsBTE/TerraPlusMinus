@@ -69,5 +69,7 @@ biomes:
 # Customize the default material for the surface
 surface_material: GRASS_BLOCK
 
+# Customize the material for the base blocks below the surface
+base_material: STONE
 # NOTE: Do not change
 config_version: 1.6

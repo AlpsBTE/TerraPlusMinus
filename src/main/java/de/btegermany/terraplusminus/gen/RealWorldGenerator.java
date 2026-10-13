@@ -16,6 +16,7 @@ import de.btegermany.terraplusminus.gen.landcover.LandCoverType;
 import de.btegermany.terraplusminus.gen.landcover.MultiLandCoverDataset;
 import de.btegermany.terraplusminus.gen.landcover.OsmLandCoverDataset;
 import de.btegermany.terraplusminus.gen.landcover.VectorLandCoverDataset;
+import de.btegermany.terraplusminus.gen.surface.*;
 import de.btegermany.terraplusminus.gen.tree.TreePopulator;
 import de.btegermany.terraplusminus.utils.Properties;
 import lombok.Getter;
@@ -74,6 +75,7 @@ public class RealWorldGenerator extends ChunkGenerator {
     private final CustomBiomeProvider customBiomeProvider;
 
 
+    private final BlockData baseBlock;
     private final BlockData defaultSurfaceBlock;
     private final BlockData mountainSurfaceBlock = STONE.createBlockData();
     private final BlockData underwaterBlock = DIRT.createBlockData();
@@ -84,6 +86,15 @@ public class RealWorldGenerator extends ChunkGenerator {
             FROZEN_PEAKS, SNOW_BLOCK.createBlockData()
     );
     private final BlockMapper blockMapper;
+
+    private final SurfacePatternsConfig surfacePatterns;
+    private final SurfacePatternResolver surfacePatternResolver;
+
+    /**
+     * Memoized Bukkit conversions of the surface patterns' stratum blocks: cliff faces
+     * resolve the same few configured blocks over and over, and the conversion is not free.
+     */
+    private final Map<@NonNull BlockState, @NonNull BlockData> stratumBlockCache = new ConcurrentHashMap<>();
 
     private static final Set<Material> GRASS_LIKE_MATERIALS = Set.of(
             GRASS_BLOCK,
@@ -176,6 +187,14 @@ public class RealWorldGenerator extends ChunkGenerator {
                 .maximumSize(256)
                 .build(new ChunkDataLoader(this.datasets, bakerList.toArray(new IEarthDataBaker[0])));
 
+        String baseMaterialName = plugin.getConfig().getString(Properties.BASE_MATERIAL, STONE.name());
+        Material baseMaterial = baseMaterialName == null ? STONE : Material.matchMaterial(baseMaterialName.trim());
+        if (baseMaterial == null || !baseMaterial.isBlock()) {
+            plugin.getComponentLogger().warn("Invalid base material '{}', falling back to STONE", baseMaterialName);
+            baseMaterial = STONE;
+        }
+        this.baseBlock = baseMaterial.createBlockData();
+
         // This code is explicitly there for backward compatibility and is legitimate in using the deprecated config keys
         this.blockMapper = BlockMapper.fromPlugin(plugin)
                 .withStaticGenericSurface(GRASS_BLOCK)
@@ -185,6 +204,10 @@ public class RealWorldGenerator extends ChunkGenerator {
                 .withConfiguredMapping("minecraft:dirt_path", Properties.PATH_MATERIAL)
                 .build();
         this.defaultSurfaceBlock = this.blockMapper.genericSurfaceBlock();
+
+        // surface patterns
+        this.surfacePatterns = SurfacePatternLoader.load(plugin.getComponentLogger());
+        this.surfacePatternResolver = new SurfacePatternResolver(this.surfacePatterns.getPatterns());
     }
 
 
@@ -209,7 +232,7 @@ public class RealWorldGenerator extends ChunkGenerator {
                 chunkData.setRegion(
                         x, minWorldY, z,
                         x + 1, groundHeight + 1, z + 1,
-                        STONE
+                        this.baseBlock
                 );
                 chunkData.setRegion(
                         x, groundHeight + 1, z,
@@ -230,7 +253,17 @@ public class RealWorldGenerator extends ChunkGenerator {
         CachedChunkData terraData = this.getTerraChunkData(chunkX, chunkZ);
         final int minWorldY = worldInfo.getMinHeight();
         final int maxWorldY = worldInfo.getMaxHeight();
+
+        final boolean patternsEnabled = this.surfacePatterns.isEnabled() && !this.surfacePatternResolver.isEmpty();
+        final boolean snowEnabled = this.snowEnabled;
+        final ChunkNeighborhood neighborhood = (patternsEnabled || snowEnabled)
+                ? new ChunkNeighborhood(chunkX, chunkZ, terraData, this::getTerraChunkData)
+                : null;
+        final int slopeRadius = this.surfacePatterns.getSlopeRadius();
+        final int baseBlockX = cubeToMinBlock(chunkX);
+        final int baseBlockZ = cubeToMinBlock(chunkZ);
         final LandCoverType[] chunkLandCover = this.getChunkLandCover(terraData);
+
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
 
@@ -239,32 +272,153 @@ public class RealWorldGenerator extends ChunkGenerator {
                 // We do that for each column, so it does not depend on the configuration but only on the seed
                 int startMountainHeight = random.nextInt(7500, 7520);
 
-                if (groundY < minWorldY || groundY >= maxWorldY) {
+                // The highest block of this column within the world's vertical bounds
+                int topY = min(groundY, maxWorldY - 1);
+                if (topY < minWorldY) {
                     continue; // We are not within vertical bounds, continue
                 }
 
+                int blockX = baseBlockX + x;
+                int blockZ = baseBlockZ + z;
+
+                // The surface block on top of the column
+                // OSM and building outline data always have priority
                 BlockData surfaceBlock = this.blockMapper.map(terraData.surfaceBlock(x, z));
                 LandCoverType landCover = chunkLandCover != null ? chunkLandCover[x * 16 + z] : null;
+                if (surfaceBlock == null && patternsEnabled) {
+                    int irlHeight = terraData.groundHeight(x, z);
+                    double slopeAngle = Slope.angleDegrees(neighborhood, blockX, blockZ, slopeRadius);
+                    SurfacePattern pattern = this.surfacePatternResolver.resolve(irlHeight, slopeAngle, landCover).orElse(null);
+                    if (pattern != null) {
+                        surfaceBlock = this.applyStrata(chunkData, pattern, x, topY, groundY, z, blockX, blockZ, minWorldY);
+                    }
+                }
                 if (surfaceBlock == null) {
                     if (groundY >= startMountainHeight) {
                         surfaceBlock = this.mountainSurfaceBlock; // Mountains stay bare
                     } else {
                         // Fallback to a generic block that matches the biome, or to the default block
-                        Biome biome = chunkData.getBiome(x, groundY, z);
+                        Biome biome = chunkData.getBiome(x, topY, z);
                         surfaceBlock = this.defaultBiomeSurfaceBlocks.getOrDefault(biome, this.defaultSurfaceBlock);
                     }
                 }
 
                 // We don't want grass, snow, and all that underwater
-                boolean isUnderWater = groundY + 1 >= maxWorldY || chunkData.getBlockData(x, groundY + 1, z).getMaterial().equals(WATER);
+                boolean isUnderWater = topY + 1 >= maxWorldY || chunkData.getBlockData(x, topY + 1, z).getMaterial().equals(WATER);
                 if (isUnderWater && GRASS_LIKE_MATERIALS.contains(surfaceBlock.getMaterial())) {
                     surfaceBlock = this.underwaterBlock;
                 }
 
-                chunkData.setBlock(x, groundY, z, surfaceBlock);
+                chunkData.setBlock(x, topY, z, surfaceBlock);
+
+                // The blocks that the column exposes on its flank get their own pattern resolution
+                if (patternsEnabled) {
+                    this.applyCliffFaces(chunkData, neighborhood, slopeRadius, x, topY, groundY, z, blockX, blockZ, minWorldY, maxWorldY, landCover);
+                }
 
             }
         }
+    }
+
+    private @Nullable BlockData applyStrata(
+            @NonNull ChunkData chunkData, @NonNull SurfacePattern pattern,
+            int x, int topY, int groundY, int z, int blockX, int blockZ, int minWorldY
+    ) {
+        BlockData surfaceBlock = this.pickStratumBlock(pattern.stratumAt(groundY - topY), blockX, topY, blockZ);
+        for (int y = topY - 1; y >= minWorldY; y--) {
+            SurfacePattern.Stratum stratum = pattern.finiteStratumAt(groundY - y);
+            if (stratum == null) break;
+            chunkData.setBlock(x, y, z, Objects.requireNonNull(this.pickStratumBlock(stratum, blockX, y, blockZ)));
+        }
+        return surfaceBlock;
+    }
+
+    /**
+     * Applies surface patterns to the blocks that a terrain column exposes on its flank.
+     * So all blocks between the lowest neighboring surface and the column's own surface.
+     * <p>
+     * Each exposed block is resolved on its own, by its real-world height and the steepest terrain angle among the
+     * directions that expose it, and shows the stratum revealed at its depth below the column's surface.
+     */
+    private void applyCliffFaces(
+            @NonNull ChunkData chunkData, @NonNull ChunkNeighborhood neighborhood,
+            int slopeRadius, int x, int topY, int groundY, int z,
+            int blockX, int blockZ, int minWorldY, int maxWorldY, LandCoverType landCover
+    ) {
+        int neighborMinusX = neighborhood.height(blockX - 1, blockZ) + this.yOffset;
+        int neighborPlusX = neighborhood.height(blockX + 1, blockZ) + this.yOffset;
+        int neighborMinusZ = neighborhood.height(blockX, blockZ - 1) + this.yOffset;
+        int neighborPlusZ = neighborhood.height(blockX, blockZ + 1) + this.yOffset;
+        int minNeighborY = min(min(neighborMinusX, neighborPlusX), min(neighborMinusZ, neighborPlusZ));
+        if (minNeighborY >= topY - 1) {
+            return; // no block below the surface is exposed on the flank
+        }
+
+        // The face angles do not depend on the exposed height, so measure them once per direction
+        double angleMinusX = Slope.angleDegreesToward(neighborhood, blockX, blockZ, -1, 0, slopeRadius);
+        double anglePlusX = Slope.angleDegreesToward(neighborhood, blockX, blockZ, 1, 0, slopeRadius);
+        double angleMinusZ = Slope.angleDegreesToward(neighborhood, blockX, blockZ, 0, -1, slopeRadius);
+        double anglePlusZ = Slope.angleDegreesToward(neighborhood, blockX, blockZ, 0, 1, slopeRadius);
+
+        for (int y = max(minNeighborY + 1, minWorldY); y < topY; y++) {
+            // The steepest angle among the directions that expose this block
+            double faceAngle = 0.0;
+            if (neighborMinusX < y) {
+                faceAngle = Math.max(faceAngle, angleMinusX);
+            }
+            if (neighborPlusX < y) {
+                faceAngle = Math.max(faceAngle, anglePlusX);
+            }
+            if (neighborMinusZ < y) {
+                faceAngle = Math.max(faceAngle, angleMinusZ);
+            }
+            if (neighborPlusZ < y) {
+                faceAngle = Math.max(faceAngle, anglePlusZ);
+            }
+
+            // Resolve the block by its own real-world height and the face's steepness
+            SurfacePattern pattern = this.surfacePatternResolver.resolve(y - this.yOffset, faceAngle, landCover).orElse(null);
+            if (pattern == null) continue;
+            // The stratum that is revealed at this depth below the column's surface
+            SurfacePattern.Stratum stratum = pattern.stratumAt(groundY - y);
+            if (stratum == null) {
+                continue; // The pattern's finite strata do not reach this deep
+            }
+            BlockData block = this.pickStratumBlock(stratum, blockX, y, blockZ);
+
+            // We don't want grass, snow, and all that underwater
+            boolean isUnderWater = y + 1 >= maxWorldY || chunkData.getBlockData(x, y + 1, z).getMaterial().equals(WATER);
+            if (isUnderWater && GRASS_LIKE_MATERIALS.contains(block.getMaterial())) {
+                block = this.underwaterBlock;
+            }
+
+            chunkData.setBlock(x, y, z, block);
+        }
+    }
+
+    /**
+     * Picks the block to place for one revealed stratum: a mix value, derived from the block's real-world position,
+     * selects the entry of the stratum's weighted block mix.
+     */
+    private @Nullable BlockData pickStratumBlock(SurfacePattern.@Nullable Stratum stratum, int blockX, int y, int blockZ) {
+        if (stratum == null) return null;
+        SurfacePatternLayer layer = stratum.layer();
+        int irlY = y - this.yOffset;
+        double mixValue;
+        if (layer.getMode() == SurfacePatternLayer.Mode.NOISE) {
+            mixValue = layer.isNoise3d()
+                    ? NoiseSampler.sample3d(stratum.seed(), layer.getNoiseScale(), blockX, irlY, blockZ)
+                    : NoiseSampler.sample2d(stratum.seed(), layer.getNoiseScale(), blockX, blockZ);
+        } else {
+            mixValue = SpeckleHash.value(stratum.seed(), blockX, irlY, blockZ);
+        }
+        return this.mapStratumBlock(layer.pick(mixValue).getBlock());
+    }
+
+    private @NonNull BlockData mapStratumBlock(@NonNull BlockState state) {
+        return this.stratumBlockCache.computeIfAbsent(state, this.blockMapper::map);
+    }
+
     private @Nullable LandCoverType[] getChunkLandCover(@NonNull CachedChunkData terraData) {
         Object raw = terraData.getCustom(MultiLandCoverDataset.KEY, null);
         if (!(raw instanceof byte[] data)) return null;
@@ -301,14 +455,10 @@ public class RealWorldGenerator extends ChunkGenerator {
         x -= cubeToMinBlock(chunkX);
         z -= cubeToMinBlock(chunkZ);
         CachedChunkData terraData = this.getTerraChunkData(chunkX, chunkZ);
-        switch (heightMap) {
-            case OCEAN_FLOOR, OCEAN_FLOOR_WG -> {
-                return terraData.groundHeight(x, z) + this.yOffset;
-            }
-            default -> {
-                return terraData.surfaceHeight(x, z) + this.yOffset;
-            }
-        }
+        return switch (heightMap) {
+            case OCEAN_FLOOR, OCEAN_FLOOR_WG -> terraData.groundHeight(x, z) + this.yOffset;
+            default -> terraData.surfaceHeight(x, z) + this.yOffset;
+        };
     }
 
     @Override

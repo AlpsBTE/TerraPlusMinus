@@ -21,6 +21,7 @@ public class Properties {
     public static final String ACTIONBAR_HEIGHT = "height_in_actionbar";
     public static final String GENERATE_TREES = "generate_trees";
     public static final String SURFACE_MATERIAL = "surface_material";
+    public static final String BASE_MATERIAL = "base_material";
     public static final String LAND_COVER_ENABLED = "land_cover_enabled";
     public static final String TREE_LAND_COVER_BLACKLIST = "tree_land_cover_blacklist";
 
