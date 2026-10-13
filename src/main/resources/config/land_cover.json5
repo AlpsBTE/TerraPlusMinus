@@ -1,0 +1,16 @@
+{
+    "enabled": true,
+
+    "datasets": [
+        // {
+        //   "id": "example",
+        //   "enabled": true,
+        //   "priority": 100,
+        //   "type": "vector_geojson",
+        //   "path": "land_cover/example",
+        //   "bounds": { "minX": 5.9, "maxX": 10.6, "minZ": 45.6, "maxZ": 47.9 },
+        //   "tile_size_degrees": 0.03125,
+        //   "property": "land_cover"
+        // }
+    ]
+}

@@ -51,6 +51,14 @@ linked_worlds:
 # If disabled, tree generation is turned off.
 generate_trees: true
 
+# If enabled, land cover data from land_cover.json5 and OSM can be used to filter surface patterns and tree generation.
+land_cover_enabled: true
+
+# Skip tree generation on these land-cover types.
+# Valid types: WATER, FOREST, GRASSLAND, CROPLAND, WETLAND, URBAN, BARE_ROCK, SCREE, SHINGLE, SAND, GLACIER, SNOW
+tree_land_cover_blacklist:
+  - GLACIER
+
 biomes:
   # If 'use_dataset' is enabled, biomes will be generated based on: https://en.wikipedia.org/wiki/K%C3%B6ppen_climate_classification.
   use_dataset: true

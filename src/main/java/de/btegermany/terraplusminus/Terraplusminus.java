@@ -86,6 +86,7 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
         this.extractTerraConfigFileToPluginDir("config/readme-tree_cover.md", "tree_cover/README.md");
         this.extractTerraConfigFileToPluginDir("/config/building_outlines.json5", "building_outlines.json5");
         this.extractTerraConfigFileToPluginDir("/config/building_shells.json5", "building_shells.json5");
+        this.extractTerraConfigFileToPluginDir("/config/land_cover.json5", "land_cover.json5");
 
         // Register plugin messaging channel
         PlayerHashMapManagement playerHashMapManagement = new PlayerHashMapManagement();

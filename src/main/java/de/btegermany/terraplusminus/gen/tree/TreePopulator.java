@@ -8,6 +8,8 @@ import com.google.gson.JsonParser;
 import com.google.gson.stream.JsonReader;
 import de.btegermany.terraplusminus.Terraplusminus;
 import de.btegermany.terraplusminus.gen.CustomBiomeProvider;
+import de.btegermany.terraplusminus.gen.landcover.LandCoverType;
+import de.btegermany.terraplusminus.gen.landcover.MultiLandCoverDataset;
 import de.btegermany.terraplusminus.utils.Properties;
 import net.buildtheearth.terraminusminus.generator.CachedChunkData;
 import net.buildtheearth.terraminusminus.generator.ChunkDataLoader;
@@ -33,6 +35,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -50,6 +53,8 @@ public class TreePopulator extends BlockPopulator {
     boolean generateTrees; // Should Trees be added to the Terrain
     String surface;
     CustomBiomeProvider customBiomeProvider;
+    boolean landCoverEnabled;
+    List<LandCoverType> treeLandCoverBlacklist;
 
     // List of Possible trees by type
     HashMap<String, ArrayList<ArrayList<TreeBlock>>> trees = new HashMap<>();
@@ -62,6 +67,8 @@ public class TreePopulator extends BlockPopulator {
         this.zOffset = Terraplusminus.config.getInt("terrain_offset.z");
         this.generateTrees = Terraplusminus.config.getBoolean(Properties.GENERATE_TREES);
         this.surface = Terraplusminus.config.getString("surface_material");
+        this.landCoverEnabled = Terraplusminus.config.getBoolean(Properties.LAND_COVER_ENABLED, true);
+        this.treeLandCoverBlacklist = loadTreeLandCoverBlacklist();
         this.cache = CacheBuilder.newBuilder()
                 .expireAfterAccess(Duration.ofMinutes(5))
                 .softValues()
@@ -117,6 +124,9 @@ public class TreePopulator extends BlockPopulator {
                 CachedChunkData data = this.loader.load(new ChunkPos(x - (xOffset / 16), z - (zOffset / 16))).get();
 
                 byte[] treeCover = data.getCustom(EarthGeneratorPipelines.KEY_DATA_TREE_COVER, TreeCoverBaker.FALLBACK_TREE_DENSITY);
+                byte[] landCover = this.landCoverEnabled
+                        ? data.getCustom(MultiLandCoverDataset.KEY, null)
+                        : null;
                 byte[] rng = RNG_CACHE.get();
 
                 for (int i = 0, dx = 0; dx < 16 >> 1; dx++) {
@@ -143,6 +153,10 @@ public class TreePopulator extends BlockPopulator {
 
                             if (groundY < waterY) {
                                 return;
+                            }
+
+                            if (this.isLandCoverBlacklisted(landCover, valueX, valueZ)) {
+                                continue;
                             }
 
                             Location loc = new Location(world, valueX + x * 16, groundY + 1 + yOffset, valueZ + z * 16); // is offset missing?
@@ -238,6 +252,27 @@ public class TreePopulator extends BlockPopulator {
     private static class TreeLoadingStatistics {
         int familyCount = 0;
         int totalVariantCount = 0;
+    }
+
+    private boolean isLandCoverBlacklisted(byte[] landCover, int x, int z) {
+        if (landCover == null || this.treeLandCoverBlacklist.isEmpty()) {
+            return false;
+        }
+        LandCoverType type = LandCoverType.values()[landCover[x * 16 + z] & 0xFF];
+        return this.treeLandCoverBlacklist.contains(type);
+    }
+
+    private List<LandCoverType> loadTreeLandCoverBlacklist() {
+        List<?> raw = Terraplusminus.config.getList(Properties.TREE_LAND_COVER_BLACKLIST);
+        if (raw == null) return List.of();
+        List<LandCoverType> blacklist = new ArrayList<>();
+        for (Object entry : raw) {
+            LandCoverType type = LandCoverType.fromName(String.valueOf(entry));
+            if (type != LandCoverType.UNKNOWN) {
+                blacklist.add(type);
+            }
+        }
+        return blacklist;
     }
 
 }

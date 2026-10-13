@@ -8,6 +8,14 @@ import de.btegermany.terraplusminus.gen.building.config.BuildingOutlineConfig;
 import de.btegermany.terraplusminus.gen.building.outline.BuildingOutlineBaker;
 import de.btegermany.terraplusminus.gen.building.outline.BuildingOutlineDataset;
 import de.btegermany.terraplusminus.gen.building.outline.MultiBuildingOutlineDataset;
+import de.btegermany.terraplusminus.gen.landcover.LandCoverBaker;
+import de.btegermany.terraplusminus.gen.landcover.LandCoverDatasetConfigLoader;
+import de.btegermany.terraplusminus.gen.landcover.LandCoverDatasetConfigLoader.LandCoverConfig;
+import de.btegermany.terraplusminus.gen.landcover.LandCoverDatasetConfigLoader.LandCoverDatasetConfig;
+import de.btegermany.terraplusminus.gen.landcover.LandCoverType;
+import de.btegermany.terraplusminus.gen.landcover.MultiLandCoverDataset;
+import de.btegermany.terraplusminus.gen.landcover.OsmLandCoverDataset;
+import de.btegermany.terraplusminus.gen.landcover.VectorLandCoverDataset;
 import de.btegermany.terraplusminus.gen.tree.TreePopulator;
 import de.btegermany.terraplusminus.utils.Properties;
 import lombok.Getter;
@@ -141,6 +149,25 @@ public class RealWorldGenerator extends ChunkGenerator {
             bakerList.add(new BuildingOutlineBaker());
         }
 
+        boolean landCoverEnabled = plugin.getConfig().getBoolean(Properties.LAND_COVER_ENABLED, true);
+        if (landCoverEnabled) {
+            LandCoverConfig landCoverConfig = LandCoverDatasetConfigLoader.load(plugin);
+            List<VectorLandCoverDataset> landCoverDatasets = new ArrayList<>();
+            for (LandCoverDatasetConfig datasetConfig : landCoverConfig.datasets()) {
+                landCoverDatasets.add(new VectorLandCoverDataset(
+                        datasetConfig.id(),
+                        datasetConfig.tileDirectory(),
+                        datasetConfig.tileSizeDegrees(),
+                        datasetConfig.priority(),
+                        datasetConfig.propertyName(),
+                        this.settings.projection()
+                ));
+            }
+            OsmLandCoverDataset osmFallback = new OsmLandCoverDataset(new GeneratorDatasets(datasetsMap, this.settings.projection()), this.settings.projection());
+            MultiLandCoverDataset landCoverDataset = new MultiLandCoverDataset(landCoverDatasets, osmFallback);
+            bakerList.add(new LandCoverBaker(landCoverDataset));
+        }
+
         this.datasets = new GeneratorDatasets(datasetsMap, this.settings.projection());
 
         this.cache = CacheBuilder.newBuilder()
@@ -203,6 +230,7 @@ public class RealWorldGenerator extends ChunkGenerator {
         CachedChunkData terraData = this.getTerraChunkData(chunkX, chunkZ);
         final int minWorldY = worldInfo.getMinHeight();
         final int maxWorldY = worldInfo.getMaxHeight();
+        final LandCoverType[] chunkLandCover = this.getChunkLandCover(terraData);
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
 
@@ -216,6 +244,7 @@ public class RealWorldGenerator extends ChunkGenerator {
                 }
 
                 BlockData surfaceBlock = this.blockMapper.map(terraData.surfaceBlock(x, z));
+                LandCoverType landCover = chunkLandCover != null ? chunkLandCover[x * 16 + z] : null;
                 if (surfaceBlock == null) {
                     if (groundY >= startMountainHeight) {
                         surfaceBlock = this.mountainSurfaceBlock; // Mountains stay bare
@@ -236,6 +265,14 @@ public class RealWorldGenerator extends ChunkGenerator {
 
             }
         }
+    private @Nullable LandCoverType[] getChunkLandCover(@NonNull CachedChunkData terraData) {
+        Object raw = terraData.getCustom(MultiLandCoverDataset.KEY, null);
+        if (!(raw instanceof byte[] data)) return null;
+        LandCoverType[] types = new LandCoverType[16 * 16];
+        for (int i = 0; i < 16 * 16; i++) {
+            types[i] = LandCoverType.values()[data[i] & 0xFF];
+        }
+        return types;
     }
 
     private CachedChunkData getTerraChunkData(int chunkX, int chunkZ) {
