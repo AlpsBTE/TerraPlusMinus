@@ -16,6 +16,8 @@ import de.btegermany.terraplusminus.gen.landcover.LandCoverType;
 import de.btegermany.terraplusminus.gen.landcover.MultiLandCoverDataset;
 import de.btegermany.terraplusminus.gen.landcover.OsmLandCoverDataset;
 import de.btegermany.terraplusminus.gen.landcover.VectorLandCoverDataset;
+import de.btegermany.terraplusminus.gen.snow.Aspect;
+import de.btegermany.terraplusminus.gen.snow.SnowModel;
 import de.btegermany.terraplusminus.gen.surface.*;
 import de.btegermany.terraplusminus.gen.tree.TreePopulator;
 import de.btegermany.terraplusminus.utils.Properties;
@@ -38,6 +40,7 @@ import org.bukkit.World;
 import org.bukkit.block.Biome;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
+import org.bukkit.block.data.type.Snow;
 import org.bukkit.generator.BiomeProvider;
 import org.bukkit.generator.BlockPopulator;
 import org.bukkit.generator.ChunkGenerator;
@@ -47,9 +50,11 @@ import org.jspecify.annotations.Nullable;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
+import static java.lang.Math.max;
 import static java.lang.Math.min;
 import static java.util.Collections.singletonList;
 import static net.buildtheearth.terraminusminus.substitutes.ChunkPos.blockToCube;
@@ -89,6 +94,11 @@ public class RealWorldGenerator extends ChunkGenerator {
 
     private final SurfacePatternsConfig surfacePatterns;
     private final SurfacePatternResolver surfacePatternResolver;
+
+    private final boolean snowEnabled;
+    private final SnowModel snowModel;
+    private final BlockData snowBlock = SNOW_BLOCK.createBlockData();
+    private final BlockData[] snowLayerBlocks = new BlockData[9]; // indices 1..8
 
     /**
      * Memoized Bukkit conversions of the surface patterns' stratum blocks: cliff faces
@@ -184,7 +194,6 @@ public class RealWorldGenerator extends ChunkGenerator {
         this.cache = CacheBuilder.newBuilder()
                 .expireAfterAccess(5L, TimeUnit.MINUTES)
                 .softValues()
-                .maximumSize(256)
                 .build(new ChunkDataLoader(this.datasets, bakerList.toArray(new IEarthDataBaker[0])));
 
         String baseMaterialName = plugin.getConfig().getString(Properties.BASE_MATERIAL, STONE.name());
@@ -208,6 +217,38 @@ public class RealWorldGenerator extends ChunkGenerator {
         // surface patterns
         this.surfacePatterns = SurfacePatternLoader.load(plugin.getComponentLogger());
         this.surfacePatternResolver = new SurfacePatternResolver(this.surfacePatterns.getPatterns());
+
+        // snow generation
+        this.snowEnabled = plugin.getConfig().getBoolean(Properties.SNOW_GENERATION_ENABLED, true);
+        if (this.snowEnabled) {
+            this.snowModel = new SnowModel(
+                    plugin.getConfig().getInt(Properties.SNOW_MIN_HEIGHT, 2800),
+                    plugin.getConfig().getDouble(Properties.SNOW_ASPECT_BONUS, 250.0d),
+                    plugin.getConfig().getDouble(Properties.SNOW_SLOPE_MIN, 15.0d),
+                    plugin.getConfig().getDouble(Properties.SNOW_SLOPE_RANGE, 55.0d),
+                    plugin.getConfig().getDouble(Properties.SNOW_HEIGHT_MID, 3300.0d),
+                    plugin.getConfig().getDouble(Properties.SNOW_SLOPE_STEEPNESS, 0.0035d)
+            );
+            for (int i = 1; i <= 8; i++) {
+                Snow snow = (Snow) SNOW.createBlockData();
+                snow.setLayers(i);
+                this.snowLayerBlocks[i] = snow;
+            }
+        } else this.snowModel = null;
+
+        if (this.snowEnabled) {
+            plugin.getComponentLogger().info(
+                    "Snow generation enabled (min_height={}, aspect_bonus={}, height_mid={}, slope_min={}, slope_range={}, slope_steepness={})",
+                    this.snowModel.minHeight(),
+                    this.snowModel.aspectBonus(),
+                    this.snowModel.heightMid(),
+                    this.snowModel.slopeMin(),
+                    this.snowModel.slopeRange(),
+                    this.snowModel.slopeSteepness()
+            );
+        } else {
+            plugin.getComponentLogger().info("Snow generation disabled");
+        }
     }
 
 
@@ -318,6 +359,71 @@ public class RealWorldGenerator extends ChunkGenerator {
 
             }
         }
+
+        // snow applied after all surface patterns are resolved
+        if (snowEnabled && neighborhood != null) {
+            for (int x = 0; x < 16; x++) {
+                for (int z = 0; z < 16; z++) {
+                    // prevent snow on OSM/building outlines
+                    if (terraData.surfaceBlock(x, z) != null) continue;
+
+                    int groundHeight = terraData.groundHeight(x, z);
+                    int groundY = groundHeight + this.yOffset;
+                    int topY = min(groundY, maxWorldY - 1);
+                    if (topY < minWorldY || topY + 1 >= maxWorldY) continue;
+                    if (chunkData.getBlockData(x, topY + 1, z).getMaterial() != AIR) {
+                        continue; // water, plant, or some other block in the way
+                    }
+
+                    int blockX = baseBlockX + x;
+                    int blockZ = baseBlockZ + z;
+
+                    double slopeAngle = Slope.angleDegrees(neighborhood, blockX, blockZ, slopeRadius);
+                    Aspect.Result aspect = Aspect.compute(this.settings.projection(), neighborhood, blockX, blockZ, slopeRadius);
+                    if (!aspect.valid()) continue;
+
+                    if (!this.snowModel.hasSnow(groundHeight, slopeAngle, aspect.azimuth(), aspect.southernHemisphere())) {
+                        continue;
+                    }
+
+                    int layers = this.snowLayers(neighborhood, blockX, blockZ, groundHeight, slopeAngle, aspect);
+
+                    chunkData.setBlock(x, topY, z, this.snowBlock);
+                    chunkData.setBlock(x, topY + 1, z, this.snowLayerBlocks[layers]);
+                }
+            }
+        }
+    }
+
+    private int snowLayers(
+            @NonNull ChunkNeighborhood neighborhood, int blockX, int blockZ,
+            int groundHeight, double slopeAngle, Aspect.Result aspect
+    ) {
+        // local 3x3 mean of the integer heights
+        int heightSum = 0;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                heightSum += neighborhood.height(blockX + dx, blockZ + dz);
+            }
+        }
+        double smoothHeight = heightSum / 9.0d;
+        double residual = smoothHeight - groundHeight;
+
+        int layers = SnowModel.frostLayers(residual);
+        if (layers > 1) {
+            // cap by the eligible columns in the 3x3 neighborhood
+            int eligible = 0;
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    int neighborHeight = neighborhood.height(blockX + dx, blockZ + dz);
+                    if (this.snowModel.hasSnow(neighborHeight, slopeAngle, aspect.azimuth(), aspect.southernHemisphere())) {
+                        eligible++;
+                    }
+                }
+            }
+            layers = SnowModel.edgeRamp(layers, eligible);
+        }
+        return layers;
     }
 
     private @Nullable BlockData applyStrata(

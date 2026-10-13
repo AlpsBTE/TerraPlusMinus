@@ -25,6 +25,15 @@ public class Properties {
     public static final String LAND_COVER_ENABLED = "land_cover_enabled";
     public static final String TREE_LAND_COVER_BLACKLIST = "tree_land_cover_blacklist";
 
+    private static final String SNOW_PREFIX = "snow_generation.";
+    public static final String SNOW_GENERATION_ENABLED = SNOW_PREFIX + "enabled";
+    public static final String SNOW_MIN_HEIGHT = SNOW_PREFIX + "min_height";
+    public static final String SNOW_ASPECT_BONUS = SNOW_PREFIX + "aspect_bonus";
+    public static final String SNOW_HEIGHT_MID = SNOW_PREFIX + "height_mid";
+    public static final String SNOW_SLOPE_MIN = SNOW_PREFIX + "slope_min";
+    public static final String SNOW_SLOPE_RANGE = SNOW_PREFIX + "slope_range";
+    public static final String SNOW_SLOPE_STEEPNESS = SNOW_PREFIX + "slope_steepness";
+
     /**
      * Configuration key for what material to replace bricks with when generating surface osm features.
      *
