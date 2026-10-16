@@ -17,7 +17,6 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
-import org.bukkit.block.Biome;
 import org.bukkit.generator.BlockPopulator;
 import org.bukkit.generator.LimitedRegion;
 import org.bukkit.generator.WorldInfo;
@@ -34,6 +33,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeSet;
@@ -57,6 +57,10 @@ public class TreePopulator extends BlockPopulator {
 
     // List of Possible trees by type
     HashMap<String, List<TreeTemplate>> trees = new HashMap<>();
+
+    // Which tree type grows where
+    public static final String TREE_RULES_FILE = "tree_rules.json5";
+    private final TreeRules rules;
 
     // Own tree templates. Optionally, replaces the templates in the jar
     public static final String CUSTOM_TREES_FILE = "customTrees.json";
@@ -98,6 +102,14 @@ public class TreePopulator extends BlockPopulator {
                 throw new UncheckedIOException("Failed to load the default tree templates", e);
             }
         }
+
+        Map<String, Integer> templateCounts = new HashMap<>();
+        this.trees.forEach((type, variants) -> templateCounts.put(type, variants.size()));
+        this.rules = TreeRulesLoader.loadOrDefault(
+                Terraplusminus.instance.getDataPath().resolve(TREE_RULES_FILE),
+                templateCounts,
+                logger
+        );
     }
 
     /**
@@ -181,8 +193,8 @@ public class TreePopulator extends BlockPopulator {
                 // Tree chance per block (index x * 16 + z), 0-255
                 byte[] treeCover = data.getCustom(EarthGeneratorPipelines.KEY_DATA_TREE_COVER, TreeCoverBaker.FALLBACK_TREE_DENSITY);
 
-                // Biome at the chunk center
-                Biome biome = null;
+                // Rule for the biome at the chunk center
+                TreeRules.TreeRule rule = null;
 
                 for (int attempt = 0; attempt < TREE_ATTEMPTS_PER_CHUNK; attempt++) {
                     int valueX = random.nextInt(15) + 1; // Depending on the size of the tree, this should be changed
@@ -213,10 +225,13 @@ public class TreePopulator extends BlockPopulator {
                     }
 
                     Location loc = new Location(world, valueX + x * 16, groundY + 1 + yOffset, valueZ + z * 16);
-                    if (biome == null) {
-                        biome = customBiomeProvider.getBiome(worldInfo, x * 16 + 8, loc.getBlockY(), z * 16 + 8);
+                    if (rule == null) {
+                        rule = this.rules.match(customBiomeProvider.getBiome(worldInfo, x * 16 + 8, loc.getBlockY(), z * 16 + 8));
                     }
-                    generateCustomTree(limitedRegion, loc, random, treeTypes(biome));
+                    String type = rule.pickType(random);
+                    if (type != null) {
+                        generateCustomTree(limitedRegion, loc, type, random);
+                    }
                 }
 
 
@@ -232,36 +247,17 @@ public class TreePopulator extends BlockPopulator {
     }
 
     /**
-     * @return the tree types that grow in a biome, none in snowy biomes
-     */
-    private static String[] treeTypes(Biome biome) {
-        if (biome == Biome.DESERT || biome == Biome.SAVANNA || biome == Biome.SAVANNA_PLATEAU) {
-            return new String[]{"savanna"};
-        }
-        if (biome == Biome.TAIGA) {
-            return new String[]{"spruce"};
-        }
-        if (biome == Biome.SNOWY_SLOPES || biome == Biome.SNOWY_PLAINS || biome == Biome.ICE_SPIKES) {
-            return new String[0]; // TODO: trees with snow
-        }
-        return new String[]{"oak", "birch"};
-    }
-
-    /**
-     * Places a random template of the given tree types, randomly rotated.
+     * Places a random template of a tree type, randomly rotated.
      * Uses the chunk's {@link Random} so the same location always gets the same tree.
      * A tree that doesn't fit between the world's min and max height is left out,
      * blocks outside the region that may be changed are skipped.
      */
-    public void generateCustomTree(LimitedRegion limitedRegion, Location loc, Random random, String... types) {
+    public void generateCustomTree(LimitedRegion limitedRegion, Location loc, String type, Random random) {
 
-        List<TreeTemplate> trees = new ArrayList<>();
-        for (String type : types) {
-            trees.addAll(this.trees.getOrDefault(type, List.of()));
-        }
+        List<TreeTemplate> trees = this.trees.get(type);
 
         // Random Tree
-        if (trees.isEmpty()) return;
+        if (trees == null || trees.isEmpty()) return;
 
         TreeTemplate tree = trees.get(random.nextInt(trees.size()));
 

@@ -6,15 +6,19 @@ import io.papermc.paper.registry.RegistryAccess;
 import io.papermc.paper.registry.RegistryKey;
 import net.buildtheearth.terraminusminus.projection.GeographicProjection;
 import net.buildtheearth.terraminusminus.projection.OutOfProjectionBoundsException;
+import net.kyori.adventure.key.InvalidKeyException;
 import net.kyori.adventure.key.Key;
 import org.bukkit.block.Biome;
 import org.bukkit.generator.BiomeProvider;
 import org.bukkit.generator.WorldInfo;
+import org.intellij.lang.annotations.Subst;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutionException;
 
 
@@ -143,19 +147,27 @@ public class CustomBiomeProvider extends BiomeProvider {
     }
 
     public static Biome parseDefaultBiome() {
-        final String FALLBACK_BIOME = "minecraft:plains";
-
         String biomeName = Terraplusminus.config.getString("biomes.biome");
         if (biomeName == null || biomeName.isBlank()) {
-            biomeName = FALLBACK_BIOME;
-        } else {
-            biomeName = biomeName.toLowerCase();
-            if (!biomeName.contains(":")) {
-                biomeName = "minecraft:" + biomeName;
-            }
+            biomeName = "minecraft:plains";
         }
+        return parseBiome(biomeName);
+    }
 
-        var biomeRegistry = RegistryAccess.registryAccess().getRegistry(RegistryKey.BIOME);
-        return biomeRegistry.get(Key.key(biomeName));
+    /**
+     * @param name biome name like {@code plains} or {@code minecraft:plains}, any case
+     * @return the biome, or {@code null} if there is no biome with that name
+     */
+    public static @Nullable Biome parseBiome(@NonNull String name) {
+        @Subst("minecraft:plains")
+        String id = name.toLowerCase(Locale.ROOT);
+        if (!id.contains(":")) {
+            id = "minecraft:" + id;
+        }
+        try {
+            return RegistryAccess.registryAccess().getRegistry(RegistryKey.BIOME).get(Key.key(id));
+        } catch (InvalidKeyException e) {
+            return null;
+        }
     }
 }

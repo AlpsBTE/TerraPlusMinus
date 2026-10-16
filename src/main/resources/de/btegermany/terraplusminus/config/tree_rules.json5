@@ -1,0 +1,27 @@
+/*
+ * TREE RULES: which tree type grows where.
+ *
+ * Top level
+ *   rules                     ordered list of rules, see below. The first rule that matches applies.
+ *
+ * Each rule
+ *   name                      optional, only used in log messages.
+ *   when.biome                Minecraft biome or list of biomes at the tree location,
+ *                             e.g. "taiga" or ["desert", "savanna"].
+ *   broadleaf, conifer        tree types from customTrees.json, each optional.
+ *                             A list picks from all templates of these types: ["oak", "birch"].
+ *                             An object weights the types: { oak: 2, birch: 1 }.
+ *                             Unknown types are logged and ignored.
+ *   broadleaf_percent         chance (0-100) that a tree is broadleaf rather than conifer,
+ *                             default 50.
+ *                             If the chosen side has no types, the other side is used.
+ *                             If both sides are empty, no trees grow.
+ */
+{
+  rules: [
+    { name: "savanna", when: { biome: ["desert", "savanna", "savanna_plateau"] }, broadleaf: ["savanna"], broadleaf_percent: 100 },
+    { name: "taiga",   when: { biome: ["taiga"] }, broadleaf: ["oak", "birch"], conifer: ["spruce"], broadleaf_percent: 0 },
+    { name: "snow",    when: { biome: ["snowy_slopes", "snowy_plains", "ice_spikes"] }, broadleaf: [], conifer: [] },
+    { broadleaf: ["oak", "birch"], conifer: ["spruce"], broadleaf_percent: 100 } // default, for all other biomes
+  ]
+}
