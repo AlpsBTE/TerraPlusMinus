@@ -243,7 +243,7 @@ public class RealWorldGenerator extends ChunkGenerator {
     @Override
     @NonNull
     public List<BlockPopulator> getDefaultPopulators(@NonNull World world) {
-        return singletonList(new TreePopulator(this.customBiomeProvider, yOffset));
+        return singletonList(new TreePopulator(this.cache::getUnchecked, this.customBiomeProvider, yOffset));
     }
 
     @Nullable

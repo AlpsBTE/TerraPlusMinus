@@ -1,7 +1,5 @@
 package de.btegermany.terraplusminus.gen.tree;
 
-import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.LoadingCache;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
@@ -10,9 +8,7 @@ import de.btegermany.terraplusminus.Terraplusminus;
 import de.btegermany.terraplusminus.gen.CustomBiomeProvider;
 import de.btegermany.terraplusminus.utils.Properties;
 import net.buildtheearth.terraminusminus.generator.CachedChunkData;
-import net.buildtheearth.terraminusminus.generator.ChunkDataLoader;
 import net.buildtheearth.terraminusminus.generator.EarthGeneratorPipelines;
-import net.buildtheearth.terraminusminus.generator.EarthGeneratorSettings;
 import net.buildtheearth.terraminusminus.generator.data.TreeCoverBaker;
 import net.buildtheearth.terraminusminus.substitutes.BlockState;
 import net.buildtheearth.terraminusminus.substitutes.ChunkPos;
@@ -28,25 +24,23 @@ import org.jspecify.annotations.NonNull;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
+import java.util.function.Function;
 
 
 public class TreePopulator extends BlockPopulator {
 
     // Placement attempts per chunk, each succeeding with the tree chance of the block it lands on
     private static final int TREE_ATTEMPTS_PER_CHUNK = (16 >> 1) * (16 >> 1);
-    public final LoadingCache<ChunkPos, CompletableFuture<CachedChunkData>> cache;
-    private final EarthGeneratorSettings bteGeneratorSettings = EarthGeneratorSettings.parse(EarthGeneratorSettings.BTE_DEFAULT_SETTINGS);
-    ChunkDataLoader loader = new ChunkDataLoader(bteGeneratorSettings);
-    int xOffset;
+
+    // Chunk data of the world generator
+    private final Function<ChunkPos, CompletableFuture<CachedChunkData>> chunkData;
     int yOffset;
-    int zOffset;
-    boolean generateTrees; // Should Trees be added to the Terrain
+    boolean generateTrees;
     String surface;
     CustomBiomeProvider customBiomeProvider;
 
@@ -54,18 +48,19 @@ public class TreePopulator extends BlockPopulator {
     HashMap<String, ArrayList<ArrayList<TreeBlock>>> trees = new HashMap<>();
 
 
-    public TreePopulator(CustomBiomeProvider customBiomeProvider, int yOffset) {
+    /**
+     * @param chunkData chunk data of the world generator
+     */
+    public TreePopulator(
+            @NonNull Function<ChunkPos, CompletableFuture<CachedChunkData>> chunkData,
+            CustomBiomeProvider customBiomeProvider,
+            int yOffset
+    ) {
+        this.chunkData = chunkData;
         this.customBiomeProvider = customBiomeProvider;
-        this.xOffset = Terraplusminus.config.getInt("terrain_offset.x");
         this.yOffset = yOffset;
-        this.zOffset = Terraplusminus.config.getInt("terrain_offset.z");
         this.generateTrees = Terraplusminus.config.getBoolean(Properties.GENERATE_TREES);
         this.surface = Terraplusminus.config.getString("surface_material");
-        this.cache = CacheBuilder.newBuilder()
-                .expireAfterAccess(Duration.ofMinutes(5))
-                .softValues()
-                .build(new ChunkDataLoader(this.bteGeneratorSettings));
-
 
         // Load Trees from customTrees.json
         JsonObject treeTypes = getJSONObject();
@@ -113,7 +108,7 @@ public class TreePopulator extends BlockPopulator {
         World world = Bukkit.getWorld(worldInfo.getName());
         if (generateTrees && world != null) {
             try {
-                CachedChunkData data = this.loader.load(new ChunkPos(x - (xOffset / 16), z - (zOffset / 16))).get();
+                CachedChunkData data = this.chunkData.apply(new ChunkPos(x, z)).get();
 
                 // Tree chance per block (index x * 16 + z), 0-255
                 byte[] treeCover = data.getCustom(EarthGeneratorPipelines.KEY_DATA_TREE_COVER, TreeCoverBaker.FALLBACK_TREE_DENSITY);
@@ -146,7 +141,7 @@ public class TreePopulator extends BlockPopulator {
                         continue;
                     }
 
-                    Location loc = new Location(world, valueX + x * 16, groundY + 1 + yOffset, valueZ + z * 16); // is offset missing?
+                    Location loc = new Location(world, valueX + x * 16, groundY + 1 + yOffset, valueZ + z * 16);
                     if (groundY + yOffset < world.getMaxHeight() - 35 && groundY + yOffset > world.getMinHeight() && state == null) {
                         switch ((int) customBiomeProvider.getBiome()) {
                             case 4, 6, 17: // desert and savanna
