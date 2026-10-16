@@ -16,6 +16,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
+import org.bukkit.block.Biome;
 import org.bukkit.generator.BlockPopulator;
 import org.bukkit.generator.LimitedRegion;
 import org.bukkit.generator.WorldInfo;
@@ -113,6 +114,9 @@ public class TreePopulator extends BlockPopulator {
                 // Tree chance per block (index x * 16 + z), 0-255
                 byte[] treeCover = data.getCustom(EarthGeneratorPipelines.KEY_DATA_TREE_COVER, TreeCoverBaker.FALLBACK_TREE_DENSITY);
 
+                // Biome at the chunk center
+                Biome biome = null;
+
                 for (int attempt = 0; attempt < TREE_ATTEMPTS_PER_CHUNK; attempt++) {
                     int valueX = random.nextInt(15) + 1; // Depending on the size of the tree this should be changed
                     int valueZ = random.nextInt(15) + 1;
@@ -143,23 +147,10 @@ public class TreePopulator extends BlockPopulator {
 
                     Location loc = new Location(world, valueX + x * 16, groundY + 1 + yOffset, valueZ + z * 16);
                     if (groundY + yOffset < world.getMaxHeight() - 35 && groundY + yOffset > world.getMinHeight() && state == null) {
-                        switch ((int) customBiomeProvider.getBiome()) {
-                            case 4, 6, 17: // desert and savanna
-                                generateCustomTree(limitedRegion, loc, "savanna");
-                                break;
-                            case 14, 15: // flower forest
-                                generateCustomTree(limitedRegion, loc, "oak", "birch");
-                                break;
-                            case 27: // taiga
-                                generateCustomTree(limitedRegion, loc, "spruce");
-                                break;
-                            case 28, 29, 30: // snowy regions
-                                // TODO: trees with snow
-                                break;
-                            default:
-                                generateCustomTree(limitedRegion, loc, "oak", "birch");
-                                break;
+                        if (biome == null) {
+                            biome = customBiomeProvider.getBiome(worldInfo, x * 16 + 8, loc.getBlockY(), z * 16 + 8);
                         }
+                        generateCustomTree(limitedRegion, loc, treeTypes(biome));
                     }
                 }
 
@@ -173,6 +164,22 @@ public class TreePopulator extends BlockPopulator {
                 );
             }
         }
+    }
+
+    /**
+     * @return the tree types that grow in a biome, none in snowy biomes
+     */
+    private static String[] treeTypes(Biome biome) {
+        if (biome == Biome.DESERT || biome == Biome.SAVANNA || biome == Biome.SAVANNA_PLATEAU) {
+            return new String[]{"savanna"};
+        }
+        if (biome == Biome.TAIGA) {
+            return new String[]{"spruce"};
+        }
+        if (biome == Biome.SNOWY_SLOPES || biome == Biome.SNOWY_PLAINS || biome == Biome.ICE_SPIKES) {
+            return new String[0]; // TODO: trees with snow
+        }
+        return new String[]{"oak", "birch"};
     }
 
     public void generateCustomTree(LimitedRegion limitedRegion, Location loc, String... types) {

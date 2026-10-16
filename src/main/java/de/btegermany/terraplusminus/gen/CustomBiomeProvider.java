@@ -21,7 +21,6 @@ import java.util.concurrent.ExecutionException;
 public class CustomBiomeProvider extends BiomeProvider {
 
     private final KoppenClimateData climateData = new KoppenClimateData();
-    double biomeData;
 
     public static List<Biome> biomeList = new ArrayList<>(Arrays.asList(Biome.OCEAN, Biome.JUNGLE, Biome.BAMBOO_JUNGLE, Biome.SPARSE_JUNGLE, Biome.SAVANNA, Biome.DESERT, Biome.PLAINS, Biome.SUNFLOWER_PLAINS, Biome.BEACH, Biome.WINDSWEPT_GRAVELLY_HILLS,
             Biome.FLOWER_FOREST, Biome.STONY_PEAKS, Biome.SAVANNA_PLATEAU, Biome.WOODED_BADLANDS, Biome.SNOWY_TAIGA, Biome.OLD_GROWTH_SPRUCE_TAIGA, Biome.SWAMP, Biome.OLD_GROWTH_PINE_TAIGA, Biome.FOREST, Biome.DARK_FOREST,
@@ -44,8 +43,7 @@ public class CustomBiomeProvider extends BiomeProvider {
                 return Biome.PLAINS;
             }
             try {
-                biomeData = this.climateData.getAsync(coords[0], coords[1]).get();
-                return koppenDataToBukkitBiome(biomeData);
+                return koppenDataToBukkitBiome(this.climateData.getAsync(coords[0], coords[1]).get());
             } catch (OutOfProjectionBoundsException silenced) {
                 // This is not an issue,
                 // we can't be expected to supply a realistic biome for a place that does not exist on Earth
@@ -57,12 +55,8 @@ public class CustomBiomeProvider extends BiomeProvider {
                         e
                 );
             }
-        } else biomeData = 8; // Default is plains for tree generation
+        }
         return parseDefaultBiome();
-    }
-
-    public double getBiome() {
-        return biomeData;
     }
 
     @NonNull
@@ -90,9 +84,6 @@ public class CustomBiomeProvider extends BiomeProvider {
             }
             case 6 -> {
                 return Biome.SAVANNA;
-            }
-            case 8 -> {
-                return Biome.PLAINS;
             }
             case 9 -> {
                 return Biome.SUNFLOWER_PLAINS;
