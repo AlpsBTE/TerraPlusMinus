@@ -82,7 +82,7 @@ public class RealWorldGenerator extends ChunkGenerator {
         Http.configChanged(); // This ensures the T-- default config is loaded regarding the number of concurrent http requests for specific urls.
 
         EarthGeneratorSettings settings = EarthGeneratorSettings.parse(EarthGeneratorSettings.BTE_DEFAULT_SETTINGS);
-        if (!plugin.getConfig().getBoolean(Properties.GENERATE_TREES)) settings.withUseDefaultTreeCover(false);
+        if (!plugin.getConfig().getBoolean(Properties.GENERATE_TREES)) settings = settings.withUseDefaultTreeCover(false);
 
         GeographicProjection projection = new OffsetProjectionTransform(
                 settings.projection(),
