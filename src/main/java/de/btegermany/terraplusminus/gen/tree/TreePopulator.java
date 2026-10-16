@@ -50,6 +50,9 @@ public class TreePopulator extends BlockPopulator {
     // Placement attempts per chunk, each succeeding with the tree chance of the block it lands on
     private static final int TREE_ATTEMPTS_PER_CHUNK = (16 >> 1) * (16 >> 1);
 
+    // Ground slope from the heights this many blocks to each side, fewer at the chunk border
+    private static final int SLOPE_SPAN = 2;
+
     // Chunk data of the world generator, with the tree data from addTreeData
     private final Function<ChunkPos, CompletableFuture<CachedChunkData>> chunkData;
     int yOffset;
@@ -246,7 +249,8 @@ public class TreePopulator extends BlockPopulator {
                         );
                     }
 
-                    if (groundY < waterY || groundY + yOffset <= world.getMinHeight() || state != null) {
+                    if (groundY < waterY || groundY + yOffset <= world.getMinHeight() || state != null
+                            || this.tooSteep(data, valueX, valueZ)) {
                         continue;
                     }
 
@@ -255,6 +259,9 @@ public class TreePopulator extends BlockPopulator {
                         rule = this.rules.match(customBiomeProvider.getBiome(worldInfo, x * 16 + 8, loc.getBlockY(), z * 16 + 8));
                     }
                     double targetHeight = heights[valueX * 16 + valueZ];
+                    if (noTreeByHeight(targetHeight)) {
+                        continue;
+                    }
                     String type = rule.pickType(random, leafTypes[valueX * 16 + valueZ]);
                     if (type != null) {
                         generateCustomTree(limitedRegion, loc, type, random, targetHeight);
@@ -271,6 +278,37 @@ public class TreePopulator extends BlockPopulator {
                 );
             }
         }
+    }
+
+    /**
+     * @param height tree height from the tree_height dataset, NaN = no data
+     * @return whether the height data says nothing reaches tree height here (value 0), so no tree grows
+     */
+    private static boolean noTreeByHeight(double height) {
+        return height <= 0; // false for NaN
+    }
+
+    /**
+     * @return whether the ground at a block is steeper than max_slope_degrees of the rules, false without a limit
+     */
+    private boolean tooSteep(@NonNull CachedChunkData data, int x, int z) {
+        double maxSlopeDegrees = this.rules.maxSlopeDegrees();
+        return !Double.isNaN(maxSlopeDegrees) && slopeDegrees(data, x, z) > maxSlopeDegrees;
+    }
+
+    /**
+     * Slope of the ground at a block, from the ground heights of the surrounding blocks in the same chunk.
+     *
+     * @return the slope in degrees, 0 = flat, 90 = vertical
+     */
+    static double slopeDegrees(@NonNull CachedChunkData data, int x, int z) {
+        int x0 = Math.max(x - SLOPE_SPAN, 0);
+        int x1 = Math.min(x + SLOPE_SPAN, 15);
+        int z0 = Math.max(z - SLOPE_SPAN, 0);
+        int z1 = Math.min(z + SLOPE_SPAN, 15);
+        double dx = (double) (data.groundHeight(x1, z) - data.groundHeight(x0, z)) / (x1 - x0);
+        double dz = (double) (data.groundHeight(x, z1) - data.groundHeight(x, z0)) / (z1 - z0);
+        return Math.toDegrees(Math.atan(Math.hypot(dx, dz)));
     }
 
     /**

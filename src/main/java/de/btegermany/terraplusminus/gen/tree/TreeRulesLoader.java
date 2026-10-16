@@ -36,7 +36,7 @@ public final class TreeRulesLoader {
 
     static final String DEFAULT_RULES_RESOURCE = "/de/btegermany/terraplusminus/config/tree_rules.json5";
 
-    private static final Set<String> TOP_LEVEL_KEYS = Set.of("rules", "height_tolerance_percent");
+    private static final Set<String> TOP_LEVEL_KEYS = Set.of("rules", "height_tolerance_percent", "max_slope_degrees");
     private static final Set<String> RULE_KEYS = Set.of("name", "when", "broadleaf", "conifer", "broadleaf_percent");
     private static final Set<String> WHEN_KEYS = Set.of("biome");
     private static final double DEFAULT_BROADLEAF_PERCENT = 50;
@@ -109,7 +109,13 @@ public final class TreeRulesLoader {
             require(tolerance.isNumber() && tolerance.asDouble() >= 0);
             heightTolerancePercent = tolerance.asDouble();
         }
-        return new TreeRules(rules, heightTolerancePercent);
+        double maxSlopeDegrees = Double.NaN;
+        if (root.has("max_slope_degrees")) {
+            JsonNode slope = root.get("max_slope_degrees");
+            require(slope.isNumber() && slope.asDouble() > 0 && slope.asDouble() <= 90);
+            maxSlopeDegrees = slope.asDouble();
+        }
+        return new TreeRules(rules, heightTolerancePercent, maxSlopeDegrees);
     }
 
     private static @NonNull TreeRule parseRule(

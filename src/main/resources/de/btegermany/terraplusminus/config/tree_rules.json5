@@ -6,6 +6,8 @@
  *   height_tolerance_percent  optional, default 20. Only used with a tree_height dataset:
  *                             a tree is picked from the templates within this % of the real
  *                             tree height, or from the nearest ones if none is that close.
+ *   max_slope_degrees         optional, more than 0 and at most 90. No trees on ground steeper
+ *                             than this, e.g., 55 keeps trees off rock faces. Not set = no limit.
  *
  * Each rule
  *   name                      optional, only used in log messages.
@@ -26,5 +28,6 @@
     { name: "taiga",   when: { biome: ["taiga"] }, broadleaf: ["oak", "birch"], conifer: ["spruce"], broadleaf_percent: 0 },
     { name: "snow",    when: { biome: ["snowy_slopes", "snowy_plains", "ice_spikes"] }, broadleaf: [], conifer: [] },
     { broadleaf: ["oak", "birch"], conifer: ["spruce"], broadleaf_percent: 100 } // default, for all other biomes
-  ]
+  ],
+  max_slope_degrees: 55
 }

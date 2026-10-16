@@ -18,13 +18,16 @@ public final class TreeRules {
 
     private final List<TreeRule> rules;
     private final double heightTolerancePercent;
+    private final double maxSlopeDegrees;
 
     /**
      * @param heightTolerancePercent with tree height data: templates within the percentage of the target height fit
+     * @param maxSlopeDegrees        no trees on ground steeper than this, NaN = no limit
      */
-    TreeRules(@NonNull List<TreeRule> rules, double heightTolerancePercent) {
+    TreeRules(@NonNull List<TreeRule> rules, double heightTolerancePercent, double maxSlopeDegrees) {
         this.rules = List.copyOf(rules);
         this.heightTolerancePercent = heightTolerancePercent;
+        this.maxSlopeDegrees = maxSlopeDegrees;
     }
 
     /**
@@ -45,6 +48,13 @@ public final class TreeRules {
 
     public double heightTolerancePercent() {
         return this.heightTolerancePercent;
+    }
+
+    /**
+     * @return the steepest ground in degrees trees grow on, NaN = no limit
+     */
+    public double maxSlopeDegrees() {
+        return this.maxSlopeDegrees;
     }
 
     /**
