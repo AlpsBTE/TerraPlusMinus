@@ -17,9 +17,14 @@ import java.util.Set;
 public final class TreeRules {
 
     private final List<TreeRule> rules;
+    private final double heightTolerancePercent;
 
-    TreeRules(@NonNull List<TreeRule> rules) {
+    /**
+     * @param heightTolerancePercent with tree height data: templates within the percentage of the target height fit
+     */
+    TreeRules(@NonNull List<TreeRule> rules, double heightTolerancePercent) {
         this.rules = List.copyOf(rules);
+        this.heightTolerancePercent = heightTolerancePercent;
     }
 
     /**
@@ -36,6 +41,10 @@ public final class TreeRules {
 
     public int size() {
         return this.rules.size();
+    }
+
+    public double heightTolerancePercent() {
+        return this.heightTolerancePercent;
     }
 
     /**
@@ -59,8 +68,18 @@ public final class TreeRules {
             return this.biomes != null;
         }
 
-        public @Nullable String pickType(@NonNull Random random) {
-            boolean wantsBroadleaf = random.nextDouble() * 100 < this.broadleafPercent;
+        /**
+         * @param dataBroadleafPercent broadleaf share at the tree from a dataset, or NaN to use {@link #broadleafPercent}
+         * @return the chance in percent that {@link #pickType} chooses the broadleaf side
+         */
+        public double effectiveBroadleafPercent(double dataBroadleafPercent) {
+            return Double.isNaN(dataBroadleafPercent)
+                    ? this.broadleafPercent
+                    : Math.clamp(dataBroadleafPercent, 0, 100);
+        }
+
+        public @Nullable String pickType(@NonNull Random random, double dataBroadleafPercent) {
+            boolean wantsBroadleaf = random.nextDouble() * 100 < this.effectiveBroadleafPercent(dataBroadleafPercent);
             TypeChoice preferred = wantsBroadleaf ? this.broadleaf : this.conifer;
             TypeChoice other = wantsBroadleaf ? this.conifer : this.broadleaf;
             if (!preferred.isEmpty()) {

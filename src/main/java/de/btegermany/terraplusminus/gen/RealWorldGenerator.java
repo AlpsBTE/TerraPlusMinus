@@ -8,7 +8,10 @@ import de.btegermany.terraplusminus.utils.Properties;
 import lombok.Getter;
 import net.buildtheearth.terraminusminus.generator.CachedChunkData;
 import net.buildtheearth.terraminusminus.generator.ChunkDataLoader;
+import net.buildtheearth.terraminusminus.generator.EarthGeneratorPipelines;
 import net.buildtheearth.terraminusminus.generator.EarthGeneratorSettings;
+import net.buildtheearth.terraminusminus.generator.GeneratorDatasets;
+import net.buildtheearth.terraminusminus.generator.data.IEarthDataBaker;
 import net.buildtheearth.terraminusminus.projection.GeographicProjection;
 import net.buildtheearth.terraminusminus.projection.transform.OffsetProjectionTransform;
 import net.buildtheearth.terraminusminus.substitutes.ChunkPos;
@@ -27,6 +30,7 @@ import org.bukkit.generator.WorldInfo;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -101,7 +105,7 @@ public class RealWorldGenerator extends ChunkGenerator {
         this.cache = CacheBuilder.newBuilder()
                 .expireAfterAccess(5L, TimeUnit.MINUTES)
                 .softValues()
-                .build(new ChunkDataLoader(this.settings));
+                .build(this.createChunkDataLoader(plugin));
 
         // This code is explicitly there for backward compatibility and is legitimate in using the deprecated config keys
         this.blockMapper = BlockMapper.fromPlugin(plugin)
@@ -112,6 +116,21 @@ public class RealWorldGenerator extends ChunkGenerator {
                 .withConfiguredMapping("minecraft:dirt_path", Properties.PATH_MATERIAL)
                 .build();
         this.defaultSurfaceBlock = this.blockMapper.genericSurfaceBlock();
+    }
+
+    /**
+     * Terra--'s default datasets and bakers, plus the optional tree datasets of the {@link TreePopulator}.
+     */
+    private @NonNull ChunkDataLoader createChunkDataLoader(@NonNull Terraplusminus plugin) {
+        Map<String, Object> datasets = EarthGeneratorPipelines.datasets(this.settings);
+        List<IEarthDataBaker<?>> bakers = new ArrayList<>(List.of(EarthGeneratorPipelines.dataBakers(this.settings)));
+        if (plugin.getConfig().getBoolean(Properties.GENERATE_TREES)) {
+            TreePopulator.addTreeData(datasets, bakers, plugin.getComponentLogger());
+        }
+        return new ChunkDataLoader(
+                new GeneratorDatasets(datasets, this.settings.projection()),
+                bakers.toArray(IEarthDataBaker<?>[]::new)
+        );
     }
 
 

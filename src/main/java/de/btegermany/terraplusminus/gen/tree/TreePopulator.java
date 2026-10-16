@@ -5,10 +5,12 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.stream.JsonReader;
 import de.btegermany.terraplusminus.Terraplusminus;
+import de.btegermany.terraplusminus.data.ScalarDataBaker;
 import de.btegermany.terraplusminus.gen.CustomBiomeProvider;
 import de.btegermany.terraplusminus.utils.Properties;
 import net.buildtheearth.terraminusminus.generator.CachedChunkData;
 import net.buildtheearth.terraminusminus.generator.EarthGeneratorPipelines;
+import net.buildtheearth.terraminusminus.generator.data.IEarthDataBaker;
 import net.buildtheearth.terraminusminus.generator.data.TreeCoverBaker;
 import net.buildtheearth.terraminusminus.substitutes.BlockState;
 import net.buildtheearth.terraminusminus.substitutes.ChunkPos;
@@ -48,7 +50,7 @@ public class TreePopulator extends BlockPopulator {
     // Placement attempts per chunk, each succeeding with the tree chance of the block it lands on
     private static final int TREE_ATTEMPTS_PER_CHUNK = (16 >> 1) * (16 >> 1);
 
-    // Chunk data of the world generator
+    // Chunk data of the world generator, with the tree data from addTreeData
     private final Function<ChunkPos, CompletableFuture<CachedChunkData>> chunkData;
     int yOffset;
     boolean generateTrees;
@@ -66,8 +68,13 @@ public class TreePopulator extends BlockPopulator {
     public static final String CUSTOM_TREES_FILE = "customTrees.json";
     private static final String DEFAULT_CUSTOM_TREES_RESOURCE = "assets/terraplusminus/data/customTrees.json";
 
+    // Optional dataset with the broadleaf share in percent (0-100). The tree cover is Terra--'s tree_cover dataset
+    public static final String TREE_LEAF_TYPE_DATASET = "tree_leaf_type";
+    // Optional dataset with the tree height in metres
+    public static final String TREE_HEIGHT_DATASET = "tree_height";
+
     /**
-     * @param chunkData chunk data of the world generator
+     * @param chunkData chunk data of the world generator, which must include the tree data from {@link #addTreeData}
      */
     public TreePopulator(
             @NonNull Function<ChunkPos, CompletableFuture<CachedChunkData>> chunkData,
@@ -110,6 +117,22 @@ public class TreePopulator extends BlockPopulator {
                 templateCounts,
                 logger
         );
+    }
+
+    /**
+     * Adds the optional tree datasets and their bakers to the chunk data of the world generator.
+     * The tree cover is already part of Terra--'s chunk data.
+     *
+     * @param datasets datasets of the chunk data loader
+     * @param bakers   bakers of the chunk data loader
+     */
+    public static void addTreeData(
+            @NonNull Map<String, Object> datasets,
+            @NonNull List<IEarthDataBaker<?>> bakers,
+            @NonNull ComponentLogger logger
+    ) {
+        ScalarDataBaker.register(TREE_LEAF_TYPE_DATASET, datasets, bakers, logger);
+        ScalarDataBaker.register(TREE_HEIGHT_DATASET, datasets, bakers, logger);
     }
 
     /**
@@ -192,6 +215,9 @@ public class TreePopulator extends BlockPopulator {
 
                 // Tree chance per block (index x * 16 + z), 0-255
                 byte[] treeCover = data.getCustom(EarthGeneratorPipelines.KEY_DATA_TREE_COVER, TreeCoverBaker.FALLBACK_TREE_DENSITY);
+                // Broadleaf share and tree height per block (index x * 16 + z), NaN = no data
+                float[] leafTypes = data.getCustom(TREE_LEAF_TYPE_DATASET, ScalarDataBaker.NO_DATA);
+                float[] heights = data.getCustom(TREE_HEIGHT_DATASET, ScalarDataBaker.NO_DATA);
 
                 // Rule for the biome at the chunk center
                 TreeRules.TreeRule rule = null;
@@ -228,9 +254,10 @@ public class TreePopulator extends BlockPopulator {
                     if (rule == null) {
                         rule = this.rules.match(customBiomeProvider.getBiome(worldInfo, x * 16 + 8, loc.getBlockY(), z * 16 + 8));
                     }
-                    String type = rule.pickType(random);
+                    double targetHeight = heights[valueX * 16 + valueZ];
+                    String type = rule.pickType(random, leafTypes[valueX * 16 + valueZ]);
                     if (type != null) {
-                        generateCustomTree(limitedRegion, loc, type, random);
+                        generateCustomTree(limitedRegion, loc, type, random, targetHeight);
                     }
                 }
 
@@ -251,15 +278,17 @@ public class TreePopulator extends BlockPopulator {
      * Uses the chunk's {@link Random} so the same location always gets the same tree.
      * A tree that doesn't fit between the world's min and max height is left out,
      * blocks outside the region that may be changed are skipped.
+     *
+     * @param targetHeight tree height at the location in blocks, NaN or not positive = no height data
      */
-    public void generateCustomTree(LimitedRegion limitedRegion, Location loc, String type, Random random) {
+    public void generateCustomTree(LimitedRegion limitedRegion, Location loc, String type, Random random, double targetHeight) {
 
         List<TreeTemplate> trees = this.trees.get(type);
 
         // Random Tree
         if (trees == null || trees.isEmpty()) return;
 
-        TreeTemplate tree = trees.get(random.nextInt(trees.size()));
+        TreeTemplate tree = this.pickTemplate(trees, targetHeight, random);
 
         int originX = loc.getBlockX();
         int originY = loc.getBlockY();
@@ -294,6 +323,43 @@ public class TreePopulator extends BlockPopulator {
                 limitedRegion.setType(blockX, blockY, blockZ, block.getMaterial());
             }
         }
+    }
+
+    /**
+     * Picks a random template from {@link #fittingTemplates}. Draws one random number in any case.
+     *
+     * @param targetHeight tree height at the location in blocks, NaN or not positive = all templates
+     */
+    private @NonNull TreeTemplate pickTemplate(@NonNull List<TreeTemplate> templates, double targetHeight, @NonNull Random random) {
+        List<TreeTemplate> candidates = this.fittingTemplates(templates, targetHeight);
+        return candidates.get(random.nextInt(candidates.size()));
+    }
+
+    /**
+     * The templates a tree is picked from: without a target height all of them, otherwise the ones within the height
+     * tolerance of the rules, or the ones nearest to the target height if none is within it.
+     *
+     * @param templates    the templates of one tree type, not empty
+     * @param targetHeight tree height at the location in blocks, NaN or not positive = all templates
+     */
+    private @NonNull List<TreeTemplate> fittingTemplates(@NonNull List<TreeTemplate> templates, double targetHeight) {
+        if (!(targetHeight > 0)) { // also for NaN
+            return templates;
+        }
+        double tolerance = targetHeight * this.rules.heightTolerancePercent() / 100;
+        List<TreeTemplate> fitting = templates.stream()
+                .filter(template -> Math.abs(template.getHeight() - targetHeight) <= tolerance)
+                .toList();
+        if (!fitting.isEmpty()) {
+            return fitting;
+        }
+        double nearest = templates.stream()
+                .mapToDouble(template -> Math.abs(template.getHeight() - targetHeight))
+                .min()
+                .orElseThrow();
+        return templates.stream()
+                .filter(template -> Math.abs(template.getHeight() - targetHeight) == nearest)
+                .toList();
     }
 
     private static class TreeLoadingStatistics {

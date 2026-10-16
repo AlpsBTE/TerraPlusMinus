@@ -36,10 +36,11 @@ public final class TreeRulesLoader {
 
     static final String DEFAULT_RULES_RESOURCE = "/de/btegermany/terraplusminus/config/tree_rules.json5";
 
-    private static final Set<String> TOP_LEVEL_KEYS = Set.of("rules");
+    private static final Set<String> TOP_LEVEL_KEYS = Set.of("rules", "height_tolerance_percent");
     private static final Set<String> RULE_KEYS = Set.of("name", "when", "broadleaf", "conifer", "broadleaf_percent");
     private static final Set<String> WHEN_KEYS = Set.of("biome");
     private static final double DEFAULT_BROADLEAF_PERCENT = 50;
+    private static final double DEFAULT_HEIGHT_TOLERANCE_PERCENT = 20;
 
     private static final JsonMapper MAPPER = TerraConstants.JSON_MAPPER.rebuild()
             .enable(JsonReadFeature.ALLOW_UNQUOTED_FIELD_NAMES, JsonReadFeature.ALLOW_SINGLE_QUOTES)
@@ -102,7 +103,13 @@ public final class TreeRulesLoader {
 
         // The last rule is the catch-all for everywhere no other rule matches
         require(!rules.getLast().hasConditions());
-        return new TreeRules(rules);
+        double heightTolerancePercent = DEFAULT_HEIGHT_TOLERANCE_PERCENT;
+        if (root.has("height_tolerance_percent")) {
+            JsonNode tolerance = root.get("height_tolerance_percent");
+            require(tolerance.isNumber() && tolerance.asDouble() >= 0);
+            heightTolerancePercent = tolerance.asDouble();
+        }
+        return new TreeRules(rules, heightTolerancePercent);
     }
 
     private static @NonNull TreeRule parseRule(

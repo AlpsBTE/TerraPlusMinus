@@ -3,6 +3,9 @@
  *
  * Top level
  *   rules                     ordered list of rules, see below. The first rule that matches applies.
+ *   height_tolerance_percent  optional, default 20. Only used with a tree_height dataset:
+ *                             a tree is picked from the templates within this % of the real
+ *                             tree height, or from the nearest ones if none is that close.
  *
  * Each rule
  *   name                      optional, only used in log messages.
@@ -13,7 +16,7 @@
  *                             An object weights the types: { oak: 2, birch: 1 }.
  *                             Unknown types are logged and ignored.
  *   broadleaf_percent         chance (0-100) that a tree is broadleaf rather than conifer,
- *                             default 50.
+ *                             default 50. A tree_leaf_type dataset value overrides it.
  *                             If the chosen side has no types, the other side is used.
  *                             If both sides are empty, no trees grow.
  */
