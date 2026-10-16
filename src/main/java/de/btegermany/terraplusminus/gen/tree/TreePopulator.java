@@ -12,6 +12,7 @@ import net.buildtheearth.terraminusminus.generator.EarthGeneratorPipelines;
 import net.buildtheearth.terraminusminus.generator.data.TreeCoverBaker;
 import net.buildtheearth.terraminusminus.substitutes.BlockState;
 import net.buildtheearth.terraminusminus.substitutes.ChunkPos;
+import net.kyori.adventure.text.logger.slf4j.ComponentLogger;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -22,16 +23,25 @@ import org.bukkit.generator.LimitedRegion;
 import org.bukkit.generator.WorldInfo;
 import org.jspecify.annotations.NonNull;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.Reader;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Random;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Function;
 
+import static net.daporkchop.lib.common.util.PValidation.checkState;
 
 public class TreePopulator extends BlockPopulator {
 
@@ -46,8 +56,11 @@ public class TreePopulator extends BlockPopulator {
     CustomBiomeProvider customBiomeProvider;
 
     // List of Possible trees by type
-    HashMap<String, ArrayList<ArrayList<TreeBlock>>> trees = new HashMap<>();
+    HashMap<String, List<TreeTemplate>> trees = new HashMap<>();
 
+    // Own tree templates. Optionally, replaces the templates in the jar
+    public static final String CUSTOM_TREES_FILE = "customTrees.json";
+    private static final String DEFAULT_CUSTOM_TREES_RESOURCE = "assets/terraplusminus/data/customTrees.json";
 
     /**
      * @param chunkData chunk data of the world generator
@@ -63,8 +76,43 @@ public class TreePopulator extends BlockPopulator {
         this.generateTrees = Terraplusminus.config.getBoolean(Properties.GENERATE_TREES);
         this.surface = Terraplusminus.config.getString("surface_material");
 
-        // Load Trees from customTrees.json
-        JsonObject treeTypes = getJSONObject();
+        // Load trees from customTrees.json
+        ComponentLogger logger = Terraplusminus.instance.getComponentLogger();
+        Path customTreesFile = Terraplusminus.instance.getDataPath().resolve(CUSTOM_TREES_FILE);
+        boolean loaded = false;
+        if (Files.isRegularFile(customTreesFile)) {
+            try (Reader reader = Files.newBufferedReader(customTreesFile, StandardCharsets.UTF_8)) {
+                loadTrees(reader, customTreesFile.toString());
+                loaded = true;
+            } catch (IOException | RuntimeException e) {
+                logger.error("Invalid tree templates file {}: {}", customTreesFile, e.getMessage());
+                logger.error("Using the default tree templates instead.");
+                this.trees.clear();
+            }
+        }
+        if (!loaded) {
+            try (InputStream is = getClass().getClassLoader().getResourceAsStream(DEFAULT_CUSTOM_TREES_RESOURCE)) {
+                checkState(is != null, "Missing internal resource: %s", DEFAULT_CUSTOM_TREES_RESOURCE);
+                loadTrees(new InputStreamReader(is, StandardCharsets.UTF_8), "the plugin jar");
+            } catch (IOException e) {
+                throw new UncheckedIOException("Failed to load the default tree templates", e);
+            }
+        }
+    }
+
+    /**
+     * Reads tree templates in the customTrees.json format into {@link #trees}.
+     *
+     * @param source where the templates come from, for the log
+     * @throws IllegalArgumentException if the content is not a valid customTrees.json
+     */
+    private void loadTrees(@NonNull Reader reader, @NonNull String source) {
+        JsonElement root = JsonParser.parseReader(new JsonReader(reader));
+        JsonElement treesElement = root.isJsonObject() ? root.getAsJsonObject().get("trees") : null;
+        if (treesElement == null || !treesElement.isJsonObject()) {
+            throw new IllegalArgumentException("the file has no \"trees\" object at the top level");
+        }
+        JsonObject treeTypes = treesElement.getAsJsonObject();
         final TreeLoadingStatistics stats = new TreeLoadingStatistics();
         treeTypes.entrySet().forEach(treeTypeEntry -> {
             final String treeType = treeTypeEntry.getKey();
@@ -84,25 +132,44 @@ public class TreePopulator extends BlockPopulator {
                     final JsonObject treeConfig = treeEntry.getValue().getAsJsonObject();
                     Terraplusminus.instance.getComponentLogger().trace("Loading tree variant {} of size {} and family {}", treeName, sizeName, treeType);
 
-                    stats.totalVariantCount++;
                     ArrayList<TreeBlock> treeBlocks = new ArrayList<>();
+                    Set<String> unknownMaterials = new TreeSet<>();
 
-                    treeConfig.get("blocks").getAsJsonArray().forEach(treeBlockElement -> {
+                    JsonElement blocks = treeConfig.get("blocks");
+                    if (blocks == null || !blocks.isJsonArray()) {
+                        throw new IllegalArgumentException("tree " + treeType + "/" + sizeName + "/" + treeName + " has no \"blocks\" list");
+                    }
+                    blocks.getAsJsonArray().forEach(treeBlockElement -> {
 
                         JsonObject treeBlock = treeBlockElement.getAsJsonObject();
-                        treeBlocks.add(new TreeBlock(treeBlock.get("x").getAsInt(), treeBlock.get("y").getAsInt(), treeBlock.get("z").getAsInt(), Material.getMaterial(treeBlock.get("material").getAsString())));
+                        String materialName = treeBlock.get("material").getAsString();
+                        Material material = Material.getMaterial(materialName);
+                        if (material == null) {
+                            unknownMaterials.add(materialName);
+                            return;
+                        }
+                        treeBlocks.add(new TreeBlock(treeBlock.get("x").getAsInt(), treeBlock.get("y").getAsInt(), treeBlock.get("z").getAsInt(), material));
 
                     });
+                    if (!unknownMaterials.isEmpty()) {
+                        Terraplusminus.instance.getComponentLogger().warn("Tree {}/{}/{}: unknown materials {}, skipping these blocks", treeType, sizeName, treeName, unknownMaterials);
+                    }
+                    if (treeBlocks.isEmpty()) {
+                        Terraplusminus.instance.getComponentLogger().warn("Tree {}/{}/{} has no blocks, skipping it", treeType, sizeName, treeName);
+                        return;
+                    }
 
-                    trees.get(treeTypeEntry.getKey()).add(treeBlocks);
-
+                    stats.totalVariantCount++;
+                    trees.get(treeType).add(TreeTemplate.of(treeType + "/" + sizeName + "/" + treeName, treeBlocks));
                 });
-
             });
-
         });
-        Terraplusminus.instance.getComponentLogger().info("Loaded {} custom trees from {} families", stats.totalVariantCount, stats.familyCount);
 
+        if (stats.totalVariantCount == 0) {
+            throw new IllegalArgumentException("the file contains no tree templates");
+        }
+
+        Terraplusminus.instance.getComponentLogger().info("Loaded {} custom trees from {} families from {}", stats.totalVariantCount, stats.familyCount, source);
     }
 
     public void populate(@NonNull WorldInfo worldInfo, @NonNull Random random, int x, int z, @NonNull LimitedRegion limitedRegion) {
@@ -118,7 +185,7 @@ public class TreePopulator extends BlockPopulator {
                 Biome biome = null;
 
                 for (int attempt = 0; attempt < TREE_ATTEMPTS_PER_CHUNK; attempt++) {
-                    int valueX = random.nextInt(15) + 1; // Depending on the size of the tree this should be changed
+                    int valueX = random.nextInt(15) + 1; // Depending on the size of the tree, this should be changed
                     int valueZ = random.nextInt(15) + 1;
 
                     // Use the tree chance of the block the tree would be placed on
@@ -141,17 +208,15 @@ public class TreePopulator extends BlockPopulator {
                         );
                     }
 
-                    if (groundY < waterY) {
+                    if (groundY < waterY || groundY + yOffset <= world.getMinHeight() || state != null) {
                         continue;
                     }
 
                     Location loc = new Location(world, valueX + x * 16, groundY + 1 + yOffset, valueZ + z * 16);
-                    if (groundY + yOffset < world.getMaxHeight() - 35 && groundY + yOffset > world.getMinHeight() && state == null) {
-                        if (biome == null) {
-                            biome = customBiomeProvider.getBiome(worldInfo, x * 16 + 8, loc.getBlockY(), z * 16 + 8);
-                        }
-                        generateCustomTree(limitedRegion, loc, treeTypes(biome));
+                    if (biome == null) {
+                        biome = customBiomeProvider.getBiome(worldInfo, x * 16 + 8, loc.getBlockY(), z * 16 + 8);
                     }
+                    generateCustomTree(limitedRegion, loc, random, treeTypes(biome));
                 }
 
 
@@ -182,31 +247,36 @@ public class TreePopulator extends BlockPopulator {
         return new String[]{"oak", "birch"};
     }
 
-    public void generateCustomTree(LimitedRegion limitedRegion, Location loc, String... types) {
+    /**
+     * Places a random template of the given tree types, randomly rotated.
+     * Uses the chunk's {@link Random} so the same location always gets the same tree.
+     * A tree that doesn't fit between the world's min and max height is left out,
+     * blocks outside the region that may be changed are skipped.
+     */
+    public void generateCustomTree(LimitedRegion limitedRegion, Location loc, Random random, String... types) {
 
-        ArrayList<ArrayList<TreeBlock>> trees = new ArrayList<>();
+        List<TreeTemplate> trees = new ArrayList<>();
         for (String type : types) {
-            trees.addAll(this.trees.get(type));
+            trees.addAll(this.trees.getOrDefault(type, List.of()));
         }
 
         // Random Tree
         if (trees.isEmpty()) return;
 
-        int randTree = (new Random()).nextInt(trees.size());
-        if (randTree > trees.size() - 1) randTree = trees.size() - 1;
-        ArrayList<TreeBlock> tree = trees.get(randTree);
+        TreeTemplate tree = trees.get(random.nextInt(trees.size()));
 
         int originX = loc.getBlockX();
         int originY = loc.getBlockY();
         int originZ = loc.getBlockZ();
 
+        // Rotate Tree Randomly (drawn before the height check, so the random sequence doesn't depend on it)
+        int angle = random.nextInt(4) * 90;
 
-        // Rotate Tree Randomly
-        Random rand = new Random();
-        int angle = rand.nextInt(4) * 90;
+        World world = loc.getWorld();
+        if (originY + tree.minY() < world.getMinHeight() || originY + tree.maxY() >= world.getMaxHeight()) return;
 
         // Place Tree
-        for (TreeBlock block : tree) {
+        for (TreeBlock block : tree.blocks()) {
             int x = block.getX();
             int z = block.getZ();
             if (angle == 90) {
@@ -221,24 +291,17 @@ public class TreePopulator extends BlockPopulator {
                 x = z;
                 z = -temp;
             }
-            limitedRegion.setType(originX + x, originY + block.getY(), originZ + z, block.getMaterial());
+            int blockX = originX + x;
+            int blockY = originY + block.getY();
+            int blockZ = originZ + z;
+            if (limitedRegion.isInRegion(blockX, blockY, blockZ)) {
+                limitedRegion.setType(blockX, blockY, blockZ, block.getMaterial());
+            }
         }
-    }
-
-    public JsonObject getJSONObject() {
-        InputStream is = getClass().getClassLoader().getResourceAsStream("assets/terraplusminus/data/customTrees.json");
-
-        JsonReader reader;
-        assert is != null;
-        reader = new JsonReader(new InputStreamReader(is, StandardCharsets.UTF_8));
-        JsonElement jsonElement = JsonParser.parseReader(reader);
-        JsonObject jsonObject = jsonElement.getAsJsonObject();
-        return jsonObject.get("trees").getAsJsonObject();
     }
 
     private static class TreeLoadingStatistics {
         int familyCount = 0;
         int totalVariantCount = 0;
     }
-
 }
