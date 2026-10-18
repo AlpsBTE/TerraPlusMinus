@@ -1,4 +1,4 @@
-import net.minecrell.pluginyml.bukkit.BukkitPluginDescription
+import net.minecrell.pluginyml.paper.PaperPluginDescription
 
 plugins {
     `java-library`
@@ -33,6 +33,8 @@ repositories {
     }
 
     maven("https://repo.lushplugins.org/releases") // PluginUpdater
+
+    maven("https://maven.enginehub.org/repo/") // FAWE
 }
 
 dependencies {
@@ -49,6 +51,11 @@ dependencies {
     // Having a direct compile dependency on Jackson gets rid of the unnecessary warning.
     compileOnly(libs.jackson.databind)
     compileOnly(libs.jetbrains.annotations)
+
+    // FAWE:
+    implementation(platform(libs.fawe.bom)) // Ref: https://github.com/IntellectualSites/bom
+    compileOnly(libs.fawe.core)
+    compileOnly(libs.fawe.bukkit) { isTransitive = false }
 }
 
 group = "de.btegermany"
@@ -78,6 +85,13 @@ paper {
 
     loader = "de.btegermany.terraplusminus.PluginLibrariesLoader"
     generateLibrariesJson = true // https://docs.eldoria.de/pluginyml/libraries/#paper
+
+    serverDependencies {
+        register("FastAsyncWorldEdit") {
+            load = PaperPluginDescription.RelativeLoadOrder.BEFORE
+            required = true
+        }
+    }
 
     // t+-.tpll is the parent of t+-.tpll.ungenerated-chunks, so granting t+-.tpll implicitly grants teleporting into
     // ungenerated chunks and existing setups keep working. Deny the child node explicitly (e.g. for visitors) to

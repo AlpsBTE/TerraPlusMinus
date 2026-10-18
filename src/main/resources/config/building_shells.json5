@@ -1,0 +1,23 @@
+[
+  // Add building shell datasets (LoD1/LoD2/3D) here.
+  //
+  // {
+  //   "id": "swiss_buildings_3d",
+  //   "enabled": true,
+  //   "priority": 100,
+  //   "bounds": { "minX": 5.9, "maxX": 10.5, "minZ": 45.8, "maxZ": 47.85 },
+  //   "path": "swiss_buildings_3d",
+  //   "material": "minecraft:stone",
+  //   "searchRadius": 10.0
+  // },
+  //
+  // {
+  //   "id": "vienna_lod2",
+  //   "enabled": true,
+  //   "priority": 120,
+  //   "bounds": { "minX": 16.16, "maxX": 16.58, "minZ": 48.11, "maxZ": 48.33 },
+  //   "path": "vienna_lod2_dxf",
+  //   "material": "minecraft:stone",
+  //   "searchRadius": 10.0
+  // }
+]
