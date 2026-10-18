@@ -1,5 +1,7 @@
 package de.btegermany.terraplusminus.gen;
 
+import com.google.common.base.Supplier;
+import com.google.common.base.Suppliers;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.LoadingCache;
 import de.btegermany.terraplusminus.Terraplusminus;
@@ -48,7 +50,15 @@ import org.bukkit.generator.WorldInfo;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -78,6 +88,9 @@ public class RealWorldGenerator extends ChunkGenerator {
 
     private final LoadingCache<@NonNull ChunkPos, @NonNull CompletableFuture<CachedChunkData>> cache;
     private final CustomBiomeProvider customBiomeProvider;
+
+    private final Supplier<TreePopulator> treePopulator;
+    private final Set<UUID> treePopulatorWorlds = ConcurrentHashMap.newKeySet();
 
 
     private final BlockData baseBlock;
@@ -119,7 +132,7 @@ public class RealWorldGenerator extends ChunkGenerator {
         Http.configChanged(); // This ensures the T-- default config is loaded regarding the number of concurrent http requests for specific urls.
 
         EarthGeneratorSettings settings = EarthGeneratorSettings.parse(EarthGeneratorSettings.BTE_DEFAULT_SETTINGS);
-        if (!plugin.getConfig().getBoolean(Properties.GENERATE_TREES)) settings.withUseDefaultTreeCover(false);
+        if (!plugin.getConfig().getBoolean(Properties.GENERATE_TREES)) settings = settings.withUseDefaultTreeCover(false);
 
         GeographicProjection projection = new OffsetProjectionTransform(
                 settings.projection(),
@@ -198,12 +211,17 @@ public class RealWorldGenerator extends ChunkGenerator {
             bakerList.add(new LandCoverBaker(landCoverDataset, maxLandCoverEdgeFalloff));
         }
 
+        if (plugin.getConfig().getBoolean(Properties.GENERATE_TREES)) {
+            TreePopulator.addTreeData(datasetsMap, bakerList, plugin.getComponentLogger());
+        }
+
         this.datasets = new GeneratorDatasets(datasetsMap, this.settings.projection());
 
         this.cache = CacheBuilder.newBuilder()
                 .expireAfterAccess(5L, TimeUnit.MINUTES)
                 .softValues()
                 .build(new ChunkDataLoader(this.datasets, bakerList.toArray(new IEarthDataBaker[0])));
+        this.treePopulator = Suppliers.memoize(() -> new TreePopulator(this.cache::getUnchecked, this.customBiomeProvider, this.yOffset));
 
         String baseMaterialName = plugin.getConfig().getString(Properties.BASE_MATERIAL, STONE.name());
         Material baseMaterial = baseMaterialName == null ? STONE : Material.matchMaterial(baseMaterialName.trim());
@@ -256,9 +274,9 @@ public class RealWorldGenerator extends ChunkGenerator {
         }
     }
 
-
     @Override
     public void generateNoise(@NonNull WorldInfo worldInfo, @NonNull Random random, int chunkX, int chunkZ, @NonNull ChunkData chunkData) {
+        this.registerTreePopulator(worldInfo);
         CachedChunkData terraData = this.getTerraChunkData(chunkX, chunkZ);
 
         int minWorldY = worldInfo.getMinHeight();
@@ -599,10 +617,25 @@ public class RealWorldGenerator extends ChunkGenerator {
         };
     }
 
+    /**
+     * Worlds created directly by other plugins (e.g., to regenerate chunks) don't get the default populators.
+     */
+    private void registerTreePopulator(@NonNull WorldInfo worldInfo) {
+        if (!(worldInfo instanceof World world) || !this.treePopulatorWorlds.add(world.getUID())) return;
+        List<BlockPopulator> populators = world.getPopulators();
+
+        synchronized (populators) {
+            if (!populators.contains(this.treePopulator.get())) {
+                populators.add(this.treePopulator.get());
+                Terraplusminus.instance.getComponentLogger().debug("Added the tree populator to world {}", world.getName());
+            }
+        }
+    }
+
     @Override
     @NonNull
     public List<BlockPopulator> getDefaultPopulators(@NonNull World world) {
-        return singletonList(new TreePopulator(this.customBiomeProvider, yOffset));
+        return singletonList(this.treePopulator.get());
     }
 
     @Nullable
