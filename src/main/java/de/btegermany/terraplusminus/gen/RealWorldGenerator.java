@@ -170,6 +170,15 @@ public class RealWorldGenerator extends ChunkGenerator {
             bakerList.add(new BuildingOutlineBaker());
         }
 
+        // surface patterns (loaded early so the landcover baker can request the margin needed for edge falloff)
+        this.surfacePatterns = SurfacePatternLoader.load(plugin.getComponentLogger());
+        this.surfacePatternResolver = new SurfacePatternResolver(this.surfacePatterns.getPatterns());
+        int maxLandCoverEdgeFalloff = this.surfacePatterns.isEnabled()
+                ? this.surfacePatterns.getPatterns().stream()
+                        .mapToInt(SurfacePattern::getLandCoverEdgeFalloff)
+                        .max().orElse(0)
+                : 0;
+
         boolean landCoverEnabled = plugin.getConfig().getBoolean(Properties.LAND_COVER_ENABLED, true);
         if (landCoverEnabled) {
             LandCoverConfig landCoverConfig = LandCoverDatasetConfigLoader.load(plugin);
@@ -186,7 +195,7 @@ public class RealWorldGenerator extends ChunkGenerator {
             }
             OsmLandCoverDataset osmFallback = new OsmLandCoverDataset(new GeneratorDatasets(datasetsMap, this.settings.projection()), this.settings.projection());
             MultiLandCoverDataset landCoverDataset = new MultiLandCoverDataset(landCoverDatasets, osmFallback);
-            bakerList.add(new LandCoverBaker(landCoverDataset));
+            bakerList.add(new LandCoverBaker(landCoverDataset, maxLandCoverEdgeFalloff));
         }
 
         this.datasets = new GeneratorDatasets(datasetsMap, this.settings.projection());
@@ -213,10 +222,6 @@ public class RealWorldGenerator extends ChunkGenerator {
                 .withConfiguredMapping("minecraft:dirt_path", Properties.PATH_MATERIAL)
                 .build();
         this.defaultSurfaceBlock = this.blockMapper.genericSurfaceBlock();
-
-        // surface patterns
-        this.surfacePatterns = SurfacePatternLoader.load(plugin.getComponentLogger());
-        this.surfacePatternResolver = new SurfacePatternResolver(this.surfacePatterns.getPatterns());
 
         // snow generation
         this.snowEnabled = plugin.getConfig().getBoolean(Properties.SNOW_GENERATION_ENABLED, true);
@@ -303,7 +308,7 @@ public class RealWorldGenerator extends ChunkGenerator {
         final int slopeRadius = this.surfacePatterns.getSlopeRadius();
         final int baseBlockX = cubeToMinBlock(chunkX);
         final int baseBlockZ = cubeToMinBlock(chunkZ);
-        final LandCoverType[] chunkLandCover = this.getChunkLandCover(terraData);
+        final LandCoverData landCoverData = this.getChunkLandCover(terraData);
 
         for (int x = 0; x < 16; x++) {
             for (int z = 0; z < 16; z++) {
@@ -325,11 +330,14 @@ public class RealWorldGenerator extends ChunkGenerator {
                 // The surface block on top of the column
                 // OSM and building outline data always have priority
                 BlockData surfaceBlock = this.blockMapper.map(terraData.surfaceBlock(x, z));
-                LandCoverType landCover = chunkLandCover != null ? chunkLandCover[x * 16 + z] : null;
+                LandCoverType landCover = landCoverData != null ? landCoverData.types()[x * 16 + z] : null;
+                int edgeDistance = landCoverData != null && landCoverData.edgeDistances() != null
+                        ? landCoverData.edgeDistances()[x * 16 + z] & 0xFF
+                        : Integer.MAX_VALUE;
                 if (surfaceBlock == null && patternsEnabled) {
                     int irlHeight = terraData.groundHeight(x, z);
                     double slopeAngle = Slope.angleDegrees(neighborhood, blockX, blockZ, slopeRadius);
-                    SurfacePattern pattern = this.surfacePatternResolver.resolve(irlHeight, slopeAngle, landCover).orElse(null);
+                    SurfacePattern pattern = this.surfacePatternResolver.resolve(irlHeight, slopeAngle, landCover, edgeDistance, blockX, topY, blockZ).orElse(null);
                     if (pattern != null) {
                         surfaceBlock = this.applyStrata(chunkData, pattern, x, topY, groundY, z, blockX, blockZ, minWorldY);
                     }
@@ -354,7 +362,7 @@ public class RealWorldGenerator extends ChunkGenerator {
 
                 // The blocks that the column exposes on its flank get their own pattern resolution
                 if (patternsEnabled) {
-                    this.applyCliffFaces(chunkData, neighborhood, slopeRadius, x, topY, groundY, z, blockX, blockZ, minWorldY, maxWorldY, landCover);
+                    this.applyCliffFaces(chunkData, neighborhood, slopeRadius, x, topY, groundY, z, blockX, blockZ, minWorldY, maxWorldY, landCover, edgeDistance);
                 }
 
             }
@@ -449,7 +457,7 @@ public class RealWorldGenerator extends ChunkGenerator {
     private void applyCliffFaces(
             @NonNull ChunkData chunkData, @NonNull ChunkNeighborhood neighborhood,
             int slopeRadius, int x, int topY, int groundY, int z,
-            int blockX, int blockZ, int minWorldY, int maxWorldY, LandCoverType landCover
+            int blockX, int blockZ, int minWorldY, int maxWorldY, LandCoverType landCover, int edgeDistance
     ) {
         int neighborMinusX = neighborhood.height(blockX - 1, blockZ) + this.yOffset;
         int neighborPlusX = neighborhood.height(blockX + 1, blockZ) + this.yOffset;
@@ -483,7 +491,7 @@ public class RealWorldGenerator extends ChunkGenerator {
             }
 
             // Resolve the block by its own real-world height and the face's steepness
-            SurfacePattern pattern = this.surfacePatternResolver.resolve(y - this.yOffset, faceAngle, landCover).orElse(null);
+            SurfacePattern pattern = this.surfacePatternResolver.resolve(y - this.yOffset, faceAngle, landCover, edgeDistance, blockX, y, blockZ).orElse(null);
             if (pattern == null) continue;
             // The stratum that is revealed at this depth below the column's surface
             SurfacePattern.Stratum stratum = pattern.stratumAt(groundY - y);
@@ -525,14 +533,26 @@ public class RealWorldGenerator extends ChunkGenerator {
         return this.stratumBlockCache.computeIfAbsent(state, this.blockMapper::map);
     }
 
-    private @Nullable LandCoverType[] getChunkLandCover(@NonNull CachedChunkData terraData) {
+    private record LandCoverData(LandCoverType @NonNull [] types, byte @Nullable [] edgeDistances) {
+    }
+
+    private @Nullable LandCoverData getChunkLandCover(@NonNull CachedChunkData terraData) {
         Object raw = terraData.getCustom(MultiLandCoverDataset.KEY, null);
-        if (!(raw instanceof byte[] data)) return null;
-        LandCoverType[] types = new LandCoverType[16 * 16];
-        for (int i = 0; i < 16 * 16; i++) {
-            types[i] = LandCoverType.values()[data[i] & 0xFF];
+        if (raw instanceof LandCoverBaker.BakedLandCover data) {
+            LandCoverType[] types = new LandCoverType[16 * 16];
+            for (int i = 0; i < 16 * 16; i++) {
+                types[i] = LandCoverType.values()[data.types()[i] & 0xFF];
+            }
+            return new LandCoverData(types, data.edgeDistances());
         }
-        return types;
+        if (raw instanceof byte[] data) {
+            LandCoverType[] types = new LandCoverType[16 * 16];
+            for (int i = 0; i < 16 * 16; i++) {
+                types[i] = LandCoverType.values()[data[i] & 0xFF];
+            }
+            return new LandCoverData(types, null);
+        }
+        return null;
     }
 
     private CachedChunkData getTerraChunkData(int chunkX, int chunkZ) {

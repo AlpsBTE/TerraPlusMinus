@@ -17,60 +17,117 @@ import java.util.concurrent.CompletableFuture;
 
 // TODO: move to T--?
 /**
- * Bakes a 16x16 array of canonical {@link LandCoverType} ordinals for each chunk
+ * Bakes a 16x16 array of canonical {@link LandCoverType} ordinals for each chunk.
+ * When any surface pattern requests an edge falloff, the baker also requests a margin
+ * around the chunk and stores the distance of each column to the nearest landcover edge.
  */
-public final class LandCoverBaker implements IEarthDataBaker<byte[]> {
+public final class LandCoverBaker implements IEarthDataBaker<LandCoverBaker.BakedLandCover> {
     public static final byte FALLBACK_ORDINAL = (byte) LandCoverType.UNKNOWN.ordinal();
 
     private final MultiLandCoverDataset dataset;
+    private final int maxEdgeFalloff;
 
-    public LandCoverBaker(@NonNull MultiLandCoverDataset dataset) {
+    public LandCoverBaker(@NonNull MultiLandCoverDataset dataset, int maxEdgeFalloff) {
         this.dataset = dataset;
+        this.maxEdgeFalloff = Math.max(0, maxEdgeFalloff);
     }
 
     @Override
-    public CompletableFuture<byte[]> requestData(
+    public CompletableFuture<BakedLandCover> requestData(
             ChunkPos pos,
             GeneratorDatasets datasets,
             Bounds2d bounds,
             CornerBoundingBox2d boundsGeo
     ) throws OutOfProjectionBoundsException {
-        return this.dataset.getAsync(boundsGeo).thenApply(results -> this.bakeLandCover(results, pos));
+        CornerBoundingBox2d expandedBoundsGeo = boundsGeo;
+        if (this.maxEdgeFalloff > 0) {
+            try {
+                expandedBoundsGeo = bounds.expand(this.maxEdgeFalloff)
+                        .toCornerBB(datasets.projection(), false)
+                        .toGeo();
+            } catch (OutOfProjectionBoundsException ignored) {
+                // near projection boundaries we fall back to the unexpanded bounds
+            }
+        }
+        return this.dataset.getAsync(expandedBoundsGeo).thenApply(results -> this.bakeLandCover(results, pos));
     }
 
     @Override
-    public void bake(ChunkPos pos, CachedChunkData.Builder builder, byte[] landCover) {
-        builder.putCustom(MultiLandCoverDataset.KEY, landCover != null ? landCover : fallbackArray());
+    public void bake(ChunkPos pos, CachedChunkData.Builder builder, BakedLandCover landCover) {
+        builder.putCustom(MultiLandCoverDataset.KEY, landCover != null ? landCover : fallbackBaked());
     }
 
-    private byte[] bakeLandCover(@Nullable List<MultiLandCoverDataset.DatasetResult> results, ChunkPos pos) {
-        if (results == null) return fallbackArray();
+    private BakedLandCover bakeLandCover(@Nullable List<MultiLandCoverDataset.DatasetResult> results, ChunkPos pos) {
+        if (results == null) return fallbackBaked();
 
-        LandCoverType[] working = new LandCoverType[16 * 16];
-        Bounds2d chunkBounds = Bounds2d.of(
-                ChunkPos.cubeToMinBlock(pos.x()),
-                ChunkPos.cubeToMinBlock(pos.x()) + 16,
-                ChunkPos.cubeToMinBlock(pos.z()),
-                ChunkPos.cubeToMinBlock(pos.z()) + 16
-        );
+        int gridSize = 16 + this.maxEdgeFalloff * 2;
+        int gridBaseX = ChunkPos.cubeToMinBlock(pos.x()) - this.maxEdgeFalloff;
+        int gridBaseZ = ChunkPos.cubeToMinBlock(pos.z()) - this.maxEdgeFalloff;
+
+        LandCoverType[] working = new LandCoverType[gridSize * gridSize];
+        Bounds2d chunkBounds = Bounds2d.of(gridBaseX, gridBaseX + gridSize, gridBaseZ, gridBaseZ + gridSize);
 
         for (MultiLandCoverDataset.DatasetResult result : results) {
             if (result.polygons() == null) continue;
             for (BVH<LandCoverPolygon> bvh : result.polygons()) {
-                bvh.forEachIntersecting(chunkBounds, polygon -> polygon.fill(working, pos.x(), pos.z()));
+                bvh.forEachIntersecting(chunkBounds, polygon -> polygon.fill(working, gridSize, gridBaseX, gridBaseZ));
             }
         }
 
-        byte[] out = new byte[16 * 16];
-        for (int i = 0; i < 16 * 16; i++) {
-            out[i] = (byte) (working[i] != null ? working[i].ordinal() : LandCoverType.UNKNOWN.ordinal());
+        byte[] outTypes = new byte[16 * 16];
+        byte[] outDistances = this.maxEdgeFalloff > 0 ? new byte[16 * 16] : null;
+
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                LandCoverType type = working[(x + this.maxEdgeFalloff) * gridSize + (z + this.maxEdgeFalloff)];
+                outTypes[x * 16 + z] = (byte) (type != null ? type.ordinal() : LandCoverType.UNKNOWN.ordinal());
+            }
         }
-        return out;
+
+        if (outDistances != null) {
+            computeEdgeDistances(working, gridSize, this.maxEdgeFalloff, outDistances, this.maxEdgeFalloff);
+        }
+
+        return new BakedLandCover(outTypes, outDistances, this.maxEdgeFalloff);
     }
 
-    private static byte[] fallbackArray() {
+    private static void computeEdgeDistances(
+            LandCoverType @NonNull [] expanded, int gridSize, int offset,
+            byte @NonNull [] distances, int maxDistance
+    ) {
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                LandCoverType centerType = expanded[(x + offset) * gridSize + (z + offset)];
+                int minDist = maxDistance;
+                for (int dx = -maxDistance; dx <= maxDistance && minDist > 0; dx++) {
+                    int ex = x + offset + dx;
+                    if (ex < 0 || ex >= gridSize) continue;
+                    for (int dz = -maxDistance; dz <= maxDistance && minDist > 0; dz++) {
+                        int ez = z + offset + dz;
+                        if (ez < 0 || ez >= gridSize) continue;
+                        if (expanded[ex * gridSize + ez] != centerType) {
+                            int dist = Math.max(Math.abs(dx), Math.abs(dz));
+                            if (dist < minDist) {
+                                minDist = dist;
+                            }
+                        }
+                    }
+                }
+                distances[x * 16 + z] = (byte) minDist;
+            }
+        }
+    }
+
+    private static BakedLandCover fallbackBaked() {
         byte[] arr = new byte[16 * 16];
         Arrays.fill(arr, FALLBACK_ORDINAL);
-        return arr;
+        return new BakedLandCover(arr, null, 0);
+    }
+
+    /**
+     * The baked landcover data for a chunk: the central 16x16 types and, when edge falloff
+     * is enabled, the Chebyshev distance of each column to the nearest landcover edge.
+     */
+    public record BakedLandCover(byte @NonNull [] types, byte @Nullable [] edgeDistances, int maxEdgeFalloff) {
     }
 }

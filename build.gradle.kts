@@ -80,7 +80,7 @@ paper {
     apiVersion = "1.21"
 
     load = BukkitPluginDescription.PluginLoadOrder.STARTUP
-    authors = listOf("meysster", "Nudlsupp", "Nachwahl", "Zoriot", "R3tuxn")
+    authors = listOf("meysster", "Nudlsupp", "Nachwahl", "Zoriot", "R3tuxn", "Cinnazeyy")
 
     prefix = "T+-"
 

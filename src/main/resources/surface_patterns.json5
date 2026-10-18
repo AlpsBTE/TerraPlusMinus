@@ -77,10 +77,15 @@
     //   "max_height"  optional, real-world meters above sea level
     //   "min_slope"   optional, degrees from horizontal (default 0)
     //   "max_slope"   optional, degrees from horizontal (default unbounded)
-    //   "land_cover_whitelist" optional, list of canonical land-cover type names; the pattern
-    //                          only applies on these types (e.g. ["GLACIER"])
-    //   "land_cover_blacklist" optional, list of canonical land-cover type names; the pattern
-    //                          never applies on these types (e.g. ["URBAN", "WATER"])
+    //   "land_cover_whitelist"      optional, list of canonical land-cover type names; the pattern
+    //                                 only applies on these types (e.g. ["GLACIER"])
+    //   "land_cover_blacklist"      optional, list of canonical land-cover type names; the pattern
+    //                                 never applies on these types (e.g. ["URBAN", "WATER"])
+    //   "land_cover_edge_falloff"   optional, transition radius in blocks; only works with a
+    //                                 single-type whitelist. Within this radius of the landcover
+    //                                 edge the pattern is applied with linearly decreasing
+    //                                 probability, so it gradually gives way to the next matching
+    //                                 pattern. 0 disables the fade (default).
     //   "strata"      required, the block layers beneath the surface:
     //                   "blocks"     required, the weighted block mix of the layer
     //                   "depth"      optional, the layer's thickness in blocks; omit it on
@@ -155,9 +160,11 @@
         },
         {
             // Glacier ice wherever the land cover dataset (or OSM) says there is a glacier.
+            // The ice fades out over the last 20 blocks so it does not end in a hard line.
             "name": "glacier",
             "priority": 25.0,
             "land_cover_whitelist": ["GLACIER"],
+            "land_cover_edge_falloff": 20,
             "strata": [
                 { "blocks": [ { "block": "minecraft:snow_block" } ], "depth": 2 },
                 { "blocks": [ { "block": "minecraft:ice" }] }

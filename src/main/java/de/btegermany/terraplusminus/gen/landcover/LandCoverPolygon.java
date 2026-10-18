@@ -67,24 +67,31 @@ public final class LandCoverPolygon implements Bounds2d {
     public void fill(@Nullable LandCoverType @NonNull [] landCover, int chunkX, int chunkZ) {
         int baseX = ChunkPos.cubeToMinBlock(chunkX);
         int baseZ = ChunkPos.cubeToMinBlock(chunkZ);
+        this.fill(landCover, 16, baseX, baseZ);
+    }
 
-        // Compute a 18x18 mask (one-cell padding on each side) so boundary detection is easy.
-        boolean[][] insideMask = new boolean[18][18];
-        for (int ex = 0; ex < 18; ex++) {
-            double[] points = this.getIntersectionPoints(baseX + ex - 1);
+    /**
+     * Fills a square region of arbitrary size starting at the given projected block coordinates.
+     * Only {@code null} entries are overwritten, so higher-priority polygons keep their values.
+     */
+    public void fill(@Nullable LandCoverType @NonNull [] landCover, int gridSize, int gridBaseX, int gridBaseZ) {
+        // Compute a (gridSize+2)² mask (one-cell padding on each side) so boundary detection is easy.
+        boolean[][] insideMask = new boolean[gridSize + 2][gridSize + 2];
+        for (int ex = 0; ex < gridSize + 2; ex++) {
+            double[] points = this.getIntersectionPoints(gridBaseX + ex - 1);
             for (int i = 0; i < points.length; ) {
-                int min = clamp(floorI(points[i++]) - baseZ, -1, 17);
-                int max = clamp(floorI(points[i++]) - baseZ, -1, 17);
+                int min = clamp(floorI(points[i++]) - gridBaseZ, -1, gridSize + 1);
+                int max = clamp(floorI(points[i++]) - gridBaseZ, -1, gridSize + 1);
                 for (int z = min; z < max; z++) {
                     insideMask[ex][z + 1] = true;
                 }
             }
         }
 
-        for (int x = 0; x < 16; x++) {
-            for (int z = 0; z < 16; z++) {
-                if (insideMask[x + 1][z + 1] && landCover[x * 16 + z] == null) {
-                    landCover[x * 16 + z] = this.type;
+        for (int x = 0; x < gridSize; x++) {
+            for (int z = 0; z < gridSize; z++) {
+                if (insideMask[x + 1][z + 1] && landCover[x * gridSize + z] == null) {
+                    landCover[x * gridSize + z] = this.type;
                 }
             }
         }

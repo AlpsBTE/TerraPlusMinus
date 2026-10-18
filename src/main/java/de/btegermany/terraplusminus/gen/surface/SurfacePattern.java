@@ -25,6 +25,10 @@ public class SurfacePattern implements Comparable<SurfacePattern> {
 
     private final Set<LandCoverType> landCoverWhitelist;
     private final Set<LandCoverType> landCoverBlacklist;
+    private final int landCoverEdgeFalloff;
+    private final long landCoverEdgeFalloffSeed;
+
+    private static final long LANDCOVER_EDGE_FALLOFF_SEED = 0x7A4D789C3E2B1D55L;
 
     private final List<Stratum> strata;
     private final int[] strataStartDepths;
@@ -40,6 +44,7 @@ public class SurfacePattern implements Comparable<SurfacePattern> {
             @JsonProperty("max_slope") Double maxSlope,
             @JsonProperty("land_cover_whitelist") List<String> landCoverWhitelist,
             @JsonProperty("land_cover_blacklist") List<String> landCoverBlacklist,
+            @JsonProperty("land_cover_edge_falloff") Integer landCoverEdgeFalloff,
             @JsonProperty(value = "strata", required = true) List<SurfacePatternLayer> strata) {
         this.name = name;
         this.priority = priority == null ? 0.0d : priority;
@@ -49,6 +54,14 @@ public class SurfacePattern implements Comparable<SurfacePattern> {
         this.maxSlope = maxSlope;
         this.landCoverWhitelist = parseLandCoverSet(landCoverWhitelist);
         this.landCoverBlacklist = parseLandCoverSet(landCoverBlacklist);
+        this.landCoverEdgeFalloff = landCoverEdgeFalloff == null ? 0 : landCoverEdgeFalloff;
+        if (this.landCoverEdgeFalloff < 0) {
+            throw new IllegalArgumentException("pattern '" + this.displayName()
+                    + "': land_cover_edge_falloff must be non-negative, got " + this.landCoverEdgeFalloff);
+        }
+        this.landCoverEdgeFalloffSeed = this.landCoverEdgeFalloff > 0 && this.landCoverWhitelist.size() == 1
+                ? SpeckleHash.hash(LANDCOVER_EDGE_FALLOFF_SEED, this.name == null ? 0 : this.name.hashCode(), 0, 0)
+                : 0L;
         if (strata == null || strata.isEmpty()) {
             throw new IllegalArgumentException("pattern '" + this.displayName() + "' must define a non-empty 'strata' list");
         }
@@ -83,6 +96,18 @@ public class SurfacePattern implements Comparable<SurfacePattern> {
         return this.matchesLandCover(landCover);
     }
 
+    /**
+     * Same as {@link #matches(int, double, LandCoverType)}, but applies the configured
+     * landcover edge falloff when the block is close to a landcover boundary.
+     */
+    public boolean matches(int irlHeight, double slopeAngle, LandCoverType landCover,
+                           int edgeDistance, int blockX, int blockY, int blockZ) {
+        if (!this.matches(irlHeight, slopeAngle, landCover)) {
+            return false;
+        }
+        return this.testEdgeFalloff(edgeDistance, blockX, blockY, blockZ);
+    }
+
     private boolean matchesLandCover(LandCoverType landCover) {
         if (landCover == null) {
             return this.landCoverWhitelist.isEmpty() && this.landCoverBlacklist.isEmpty();
@@ -91,6 +116,23 @@ public class SurfacePattern implements Comparable<SurfacePattern> {
             return false;
         }
         return !this.landCoverBlacklist.contains(landCover);
+    }
+
+    /**
+     * Edge falloff is only supported for single-type whitelists: the distance is defined as
+     * the distance to the nearest column whose type differs from that single whitelisted type.
+     * For multi-type whitelists or when no falloff is configured the pattern always passes.
+     */
+    private boolean testEdgeFalloff(int edgeDistance, int blockX, int blockY, int blockZ) {
+        if (this.landCoverEdgeFalloff <= 0 || this.landCoverWhitelist.size() != 1) {
+            return true;
+        }
+        if (edgeDistance >= this.landCoverEdgeFalloff) {
+            return true;
+        }
+        double probability = (double) edgeDistance / this.landCoverEdgeFalloff;
+        double randomValue = SpeckleHash.value(this.landCoverEdgeFalloffSeed, blockX, blockY, blockZ);
+        return randomValue < probability;
     }
 
     private static Set<LandCoverType> parseLandCoverSet(List<String> names) {
@@ -142,6 +184,7 @@ public class SurfacePattern implements Comparable<SurfacePattern> {
         return "SurfacePattern{name='" + this.displayName() + "', priority=" + this.priority
                 + ", height=[" + (this.minHeight == null ? "-∞" : this.minHeight) + ", " + (this.maxHeight == null ? "∞" : this.maxHeight) + "]"
                 + ", slope=[" + this.minSlope + "°, " + (this.maxSlope == null ? "90" : this.maxSlope) + "°]"
+                + ", land_cover_edge_falloff=" + this.landCoverEdgeFalloff
                 + ", strata=" + this.strata.size() + " layer(s), " + this.strataDepth + " block(s) deep}";
     }
 }

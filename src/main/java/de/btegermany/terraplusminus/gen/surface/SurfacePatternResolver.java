@@ -27,6 +27,16 @@ public class SurfacePatternResolver {
         return Optional.empty();
     }
 
+    public Optional<SurfacePattern> resolve(int irlHeight, double slopeAngle, LandCoverType landCover,
+                                            int edgeDistance, int blockX, int blockY, int blockZ) {
+        for (SurfacePattern pattern : this.patterns) {
+            if (pattern.matches(irlHeight, slopeAngle, landCover, edgeDistance, blockX, blockY, blockZ)) {
+                return Optional.of(pattern);
+            }
+        }
+        return Optional.empty();
+    }
+
     public boolean isEmpty() {
         return this.patterns.isEmpty();
     }
