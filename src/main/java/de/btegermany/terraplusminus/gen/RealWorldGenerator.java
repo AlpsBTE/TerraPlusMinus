@@ -1,5 +1,7 @@
 package de.btegermany.terraplusminus.gen;
 
+import com.google.common.base.Supplier;
+import com.google.common.base.Suppliers;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.LoadingCache;
 import de.btegermany.terraplusminus.Terraplusminus;
@@ -35,7 +37,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
@@ -60,6 +64,9 @@ public class RealWorldGenerator extends ChunkGenerator {
 
     private final LoadingCache<@NonNull ChunkPos, @NonNull CompletableFuture<CachedChunkData>> cache;
     private final CustomBiomeProvider customBiomeProvider;
+
+    private final Supplier<TreePopulator> treePopulator;
+    private final Set<UUID> treePopulatorWorlds = ConcurrentHashMap.newKeySet();
 
 
     private final BlockData defaultSurfaceBlock;
@@ -106,6 +113,7 @@ public class RealWorldGenerator extends ChunkGenerator {
                 .expireAfterAccess(5L, TimeUnit.MINUTES)
                 .softValues()
                 .build(this.createChunkDataLoader(plugin));
+        this.treePopulator = Suppliers.memoize(() -> new TreePopulator(this.cache::getUnchecked, this.customBiomeProvider, this.yOffset));
 
         // This code is explicitly there for backward compatibility and is legitimate in using the deprecated config keys
         this.blockMapper = BlockMapper.fromPlugin(plugin)
@@ -136,6 +144,7 @@ public class RealWorldGenerator extends ChunkGenerator {
 
     @Override
     public void generateNoise(@NonNull WorldInfo worldInfo, @NonNull Random random, int chunkX, int chunkZ, @NonNull ChunkData chunkData) {
+        this.registerTreePopulator(worldInfo);
         CachedChunkData terraData = this.getTerraChunkData(chunkX, chunkZ);
 
         int minWorldY = worldInfo.getMinHeight();
@@ -259,10 +268,25 @@ public class RealWorldGenerator extends ChunkGenerator {
         };
     }
 
+    /**
+     * Worlds created directly by other plugins (e.g., to regenerate chunks) don't get the default populators.
+     */
+    private void registerTreePopulator(@NonNull WorldInfo worldInfo) {
+        if (!(worldInfo instanceof World world) || !this.treePopulatorWorlds.add(world.getUID())) return;
+        List<BlockPopulator> populators = world.getPopulators();
+
+        synchronized (populators) {
+            if (!populators.contains(this.treePopulator.get())) {
+                populators.add(this.treePopulator.get());
+                Terraplusminus.instance.getComponentLogger().debug("Added the tree populator to world {}", world.getName());
+            }
+        }
+    }
+
     @Override
     @NonNull
     public List<BlockPopulator> getDefaultPopulators(@NonNull World world) {
-        return singletonList(new TreePopulator(this.cache::getUnchecked, this.customBiomeProvider, yOffset));
+        return singletonList(this.treePopulator.get());
     }
 
     @Nullable

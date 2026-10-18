@@ -15,10 +15,7 @@ import net.buildtheearth.terraminusminus.generator.data.TreeCoverBaker;
 import net.buildtheearth.terraminusminus.substitutes.BlockState;
 import net.buildtheearth.terraminusminus.substitutes.ChunkPos;
 import net.kyori.adventure.text.logger.slf4j.ComponentLogger;
-import org.bukkit.Bukkit;
-import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.World;
 import org.bukkit.generator.BlockPopulator;
 import org.bukkit.generator.LimitedRegion;
 import org.bukkit.generator.WorldInfo;
@@ -211,8 +208,7 @@ public class TreePopulator extends BlockPopulator {
     }
 
     public void populate(@NonNull WorldInfo worldInfo, @NonNull Random random, int x, int z, @NonNull LimitedRegion limitedRegion) {
-        World world = Bukkit.getWorld(worldInfo.getName());
-        if (generateTrees && world != null) {
+        if (generateTrees) {
             try {
                 CachedChunkData data = this.chunkData.apply(new ChunkPos(x, z)).get();
 
@@ -249,14 +245,14 @@ public class TreePopulator extends BlockPopulator {
                         );
                     }
 
-                    if (groundY < waterY || groundY + yOffset <= world.getMinHeight() || state != null
+                    if (groundY < waterY || groundY + yOffset <= worldInfo.getMinHeight() || state != null
                             || this.tooSteep(data, valueX, valueZ)) {
                         continue;
                     }
 
-                    Location loc = new Location(world, valueX + x * 16, groundY + 1 + yOffset, valueZ + z * 16);
+                    int treeY = groundY + 1 + yOffset;
                     if (rule == null) {
-                        rule = this.rules.match(customBiomeProvider.getBiome(worldInfo, x * 16 + 8, loc.getBlockY(), z * 16 + 8));
+                        rule = this.rules.match(customBiomeProvider.getBiome(worldInfo, x * 16 + 8, treeY, z * 16 + 8));
                     }
                     double targetHeight = heights[valueX * 16 + valueZ];
                     if (noTreeByHeight(targetHeight)) {
@@ -264,7 +260,7 @@ public class TreePopulator extends BlockPopulator {
                     }
                     String type = rule.pickType(random, leafTypes[valueX * 16 + valueZ]);
                     if (type != null) {
-                        generateCustomTree(limitedRegion, loc, type, random, targetHeight);
+                        generateCustomTree(limitedRegion, worldInfo, valueX + x * 16, treeY, valueZ + z * 16, type, random, targetHeight);
                     }
                 }
 
@@ -319,7 +315,8 @@ public class TreePopulator extends BlockPopulator {
      *
      * @param targetHeight tree height at the location in blocks, NaN or not positive = no height data
      */
-    public void generateCustomTree(LimitedRegion limitedRegion, Location loc, String type, Random random, double targetHeight) {
+    public void generateCustomTree(LimitedRegion limitedRegion, WorldInfo worldInfo, int originX, int originY, int originZ,
+                                   String type, Random random, double targetHeight) {
 
         List<TreeTemplate> trees = this.trees.get(type);
 
@@ -328,15 +325,10 @@ public class TreePopulator extends BlockPopulator {
 
         TreeTemplate tree = this.pickTemplate(trees, targetHeight, random);
 
-        int originX = loc.getBlockX();
-        int originY = loc.getBlockY();
-        int originZ = loc.getBlockZ();
-
         // Rotate Tree Randomly (drawn before the height check, so the random sequence doesn't depend on it)
         int angle = random.nextInt(4) * 90;
 
-        World world = loc.getWorld();
-        if (originY + tree.minY() < world.getMinHeight() || originY + tree.maxY() >= world.getMaxHeight()) return;
+        if (originY + tree.minY() < worldInfo.getMinHeight() || originY + tree.maxY() >= worldInfo.getMaxHeight()) return;
 
         // Place Tree
         for (TreeBlock block : tree.blocks()) {
