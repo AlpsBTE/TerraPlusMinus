@@ -1,4 +1,3 @@
-import net.minecrell.pluginyml.bukkit.BukkitPluginDescription
 import net.minecrell.pluginyml.paper.PaperPluginDescription
 
 plugins {
@@ -94,10 +93,19 @@ paper {
         }
     }
 
+    // t+-.tpll is the parent of t+-.tpll.ungenerated-chunks, so granting t+-.tpll implicitly grants teleporting into
+    // ungenerated chunks and existing setups keep working. Deny the child node explicitly (e.g. for visitors) to
+    // prevent players from generating new chunks via /tpll - see https://github.com/BTE-Germany/TerraPlusMinus/issues/74
+    // The OP defaults match the behaviour of the previously undeclared nodes, please don't change them lightly.
     permissions {
-        register("t+-.autoteleport") {
-            description = "Enables automatic teleportation between linked worlds."
-            default = BukkitPluginDescription.Permission.Default.TRUE
+        register("t+-.tpll") {
+            description = "Allows usage of /tpll"
+            default = BukkitPluginDescription.Permission.Default.OP
+            children = listOf("t+-.tpll.ungenerated-chunks")
+        }
+        register("t+-.tpll.ungenerated-chunks") {
+            description = "Allows /tpll into chunks which are not generated yet. Inherited from t+-.tpll - deny it explicitly to prevent players from generating new chunks"
+            default = BukkitPluginDescription.Permission.Default.OP
         }
     }
 }
