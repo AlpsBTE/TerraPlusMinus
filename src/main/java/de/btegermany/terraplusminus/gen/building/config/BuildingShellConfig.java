@@ -1,5 +1,11 @@
 package de.btegermany.terraplusminus.gen.building.config;
 
+import static de.btegermany.terraplusminus.gen.building.config.JsonFields.optionalBoolean;
+import static de.btegermany.terraplusminus.gen.building.config.JsonFields.optionalDouble;
+import static de.btegermany.terraplusminus.gen.building.config.JsonFields.optionalText;
+import static de.btegermany.terraplusminus.gen.building.config.JsonFields.requiredObject;
+import static de.btegermany.terraplusminus.gen.building.config.JsonFields.requiredText;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import java.nio.file.Path;
 
@@ -23,36 +29,5 @@ public record BuildingShellConfig(
                 optionalText(node, "material", "minecraft:stone"),
                 optionalDouble(node, "searchRadius", 10.0d)
         );
-    }
-
-    private static JsonNode requiredObject(JsonNode node, String field) {
-        JsonNode value = node == null ? null : node.get(field);
-        if (value == null || !value.isObject()) {
-            throw new IllegalArgumentException("Missing object field: " + field);
-        }
-        return value;
-    }
-
-    private static String requiredText(JsonNode node, String field) {
-        JsonNode value = node == null ? null : node.get(field);
-        if (value == null || !value.isTextual()) {
-            throw new IllegalArgumentException("Missing text field: " + field);
-        }
-        return value.asText();
-    }
-
-    private static String optionalText(JsonNode node, String field, String fallback) {
-        JsonNode value = node == null ? null : node.get(field);
-        return value != null && value.isTextual() ? value.asText() : fallback;
-    }
-
-    private static boolean optionalBoolean(JsonNode node, String field, boolean fallback) {
-        JsonNode value = node == null ? null : node.get(field);
-        return value != null && value.isBoolean() ? value.asBoolean() : fallback;
-    }
-
-    private static double optionalDouble(JsonNode node, String field, double fallback) {
-        JsonNode value = node == null ? null : node.get(field);
-        return value != null && value.isNumber() ? value.asDouble() : fallback;
     }
 }

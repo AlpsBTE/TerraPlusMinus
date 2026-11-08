@@ -1,5 +1,7 @@
 package de.btegermany.terraplusminus.gen.building.config;
 
+import static de.btegermany.terraplusminus.gen.building.config.JsonFields.requiredDouble;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import net.buildtheearth.terraminusminus.util.bvh.Bounds2d;
 
@@ -19,13 +21,5 @@ public record DatasetExtent(double minLon, double minLat, double maxLon, double 
     public boolean intersects(Bounds2d bounds) {
         return this.minLon <= bounds.maxX() && this.maxLon >= bounds.minX()
                 && this.minLat <= bounds.maxZ() && this.maxLat >= bounds.minZ();
-    }
-
-    private static double requiredDouble(JsonNode node, String field) {
-        JsonNode value = node == null ? null : node.get(field);
-        if (value == null || !value.isNumber()) {
-            throw new IllegalArgumentException("Missing numeric bounds field: " + field);
-        }
-        return value.asDouble();
     }
 }

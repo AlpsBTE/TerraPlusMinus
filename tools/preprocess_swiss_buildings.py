@@ -7,7 +7,7 @@ Usage:
 
 The input file must contain a layer with building footprints (e.g., TLM_GEBAEUDE_FOOTPRINT).
 The output is a directory of GeoJSONSeq tiles, one Feature per line, ready to be loaded
-by SwissBuildingDataset.
+by BuildingOutlineDataset (configured in building_outlines.json5).
 
 Tiles are indexed by 1/32 degree (~3.4km at Swiss latitudes) using equirectangular coordinates.
 Only tiles that contain at least one building are written.

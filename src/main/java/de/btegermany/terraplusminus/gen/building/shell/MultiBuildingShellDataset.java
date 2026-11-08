@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.List;
 import lombok.NonNull;
 import net.buildtheearth.terraminusminus.util.bvh.Bounds2d;
+import org.bukkit.Material;
 
 public final class MultiBuildingShellDataset {
     private final List<Entry> entries;
@@ -53,13 +54,14 @@ public final class MultiBuildingShellDataset {
         return accepted;
     }
 
-    public String materialFor(BuildingShell shell) {
+    public Material materialFor(BuildingShell shell) {
         for (Entry entry : this.entries) {
             if (entry.config.id().equals(shell.datasetId())) {
-                return entry.config.material();
+                return entry.material;
             }
         }
-        return "minecraft:stone";
+        // Shells are only ever produced by the datasets of this instance.
+        throw new IllegalStateException("Building shell from unknown dataset: " + shell.datasetId());
     }
 
     public double defaultSearchRadius(double lon, double lat) {
@@ -71,6 +73,9 @@ public final class MultiBuildingShellDataset {
         return 10.0d;
     }
 
-    public record Entry(BuildingShellConfig config, BuildingShellDataset dataset) {
+    /**
+     * @param material the validated block material resolved from {@link BuildingShellConfig#material()}
+     */
+    public record Entry(BuildingShellConfig config, BuildingShellDataset dataset, Material material) {
     }
 }

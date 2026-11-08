@@ -1,5 +1,7 @@
 package de.btegermany.terraplusminus.gen.building.outline;
 
+import static net.daporkchop.lib.common.util.PorkUtil.uncheckedCast;
+
 import de.btegermany.terraplusminus.gen.building.config.BuildingOutlineConfig;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -41,7 +43,7 @@ public final class MultiBuildingOutlineDataset {
                 if (datasetRegions == null) continue;
                 regions.addAll(List.of(datasetRegions));
             }
-            return regions.isEmpty() ? null : regions.toArray(new BVH[0]);
+            return regions.isEmpty() ? null : uncheckedCast(regions.toArray(new BVH[0]));
         });
     }
 

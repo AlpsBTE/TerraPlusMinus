@@ -39,6 +39,5 @@ public record Bounds(double minLon, double minLat, double minZ, double maxLon, d
         return !Double.isInfinite(minLon)
                 ? new Bounds(minLon, minLat, minZ, maxLon, maxLat, maxZ)
                 : new Bounds(0.0d, 0.0d, 0.0d, 0.0d, 0.0d, 0.0d);
-    }
-
+        }
     }

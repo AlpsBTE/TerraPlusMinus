@@ -36,6 +36,7 @@ import net.buildtheearth.terraminusminus.projection.OutOfProjectionBoundsExcepti
 import net.buildtheearth.terraminusminus.util.geo.CoordinateParseUtils;
 import net.buildtheearth.terraminusminus.util.geo.LatLng;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
@@ -85,7 +86,12 @@ public class GenerateBuildingCommand {
                 this.plugin.getComponentLogger().warn("Building shell dataset '{}' is enabled but directory '{}' does not exist.", config.id(), config.path());
                 continue;
             }
-            entries.add(new MultiBuildingShellDataset.Entry(config, new BuildingShellDataset(config.id(), config.path())));
+            Material material = Material.matchMaterial(config.material());
+            if (material == null || !material.isBlock()) {
+                this.plugin.getComponentLogger().warn("Building shell dataset '{}' has invalid block material '{}'; dataset disabled.", config.id(), config.material());
+                continue;
+            }
+            entries.add(new MultiBuildingShellDataset.Entry(config, new BuildingShellDataset(config.id(), config.path()), material));
             this.plugin.getComponentLogger().info("Building shell dataset enabled: {} ({})", config.id(), config.path());
         }
         this.dataset = entries.isEmpty() ? null : new MultiBuildingShellDataset(entries);
@@ -203,10 +209,8 @@ public class GenerateBuildingCommand {
                                 }
 
                                 sender.sendMessage(prefix + "§7Generating " + result.buildings() + " buildings (" + result.blocks() + " shell blocks)...");
-                                for (Map.Entry<String, List<Set<BuildingShellVoxelizer.BlockPos>>> entry : result.shellsByMaterial().entrySet()) {
-                                    BuildingShellPlacer.placeShells(this.plugin, player, context.world(), entry.getValue(), entry.getKey());
-                                }
-                                sender.sendMessage(prefix + "§aGenerated " + result.buildings() + " buildings. Use §7//undo§a to revert.");
+                                BuildingShellPlacer.placeShells(this.plugin, player, context.world(), result.shellsByMaterial(), () ->
+                                        sender.sendMessage(prefix + "§aGenerated " + result.buildings() + " buildings. Use §7//undo§a to revert."));
                             }))
                             .exceptionally(ex -> {
                                 Bukkit.getScheduler().runTask(this.plugin, () -> sender.sendMessage(prefix + "§cError generating buildings: " + ex.getMessage()));
@@ -249,8 +253,8 @@ public class GenerateBuildingCommand {
                         return;
                     }
                     sender.sendMessage(prefix + "§7Generating " + result.voxels().size() + " shell blocks...");
-                    BuildingShellPlacer.place(this.plugin, player, context.world(), result.voxels(), result.material());
-                    sender.sendMessage(prefix + "§aBuilding generated. Use §7//undo§a to revert.");
+                    BuildingShellPlacer.placeShells(this.plugin, player, context.world(), Map.of(result.material(), List.of(result.voxels())), () ->
+                            sender.sendMessage(prefix + "§aBuilding generated. Use §7//undo§a to revert."));
                 }))
                 .exceptionally(ex -> {
                     Bukkit.getScheduler().runTask(this.plugin, () -> sender.sendMessage(prefix + "§cError generating building: " + ex.getMessage()));
@@ -270,7 +274,7 @@ public class GenerateBuildingCommand {
             return SelectionGenerationResult.empty();
         }
 
-        Map<String, List<Set<BuildingShellVoxelizer.BlockPos>>> matchedShells = new HashMap<>();
+        Map<Material, List<Set<BuildingShellVoxelizer.BlockPos>>> matchedShells = new HashMap<>();
         long totalBlocks = 0L;
         int totalBuildings = 0;
 
@@ -393,13 +397,13 @@ public class GenerateBuildingCommand {
     ) {
     }
 
-    private record PointGenerationResult(Set<BuildingShellVoxelizer.BlockPos> voxels, String material) {
+    private record PointGenerationResult(Set<BuildingShellVoxelizer.BlockPos> voxels, Material material) {
     }
 
     private record SelectionGenerationResult(
             int buildings,
             long blocks,
-            Map<String, List<Set<BuildingShellVoxelizer.BlockPos>>> shellsByMaterial
+            Map<Material, List<Set<BuildingShellVoxelizer.BlockPos>>> shellsByMaterial
     ) {
         static SelectionGenerationResult empty() {
             return new SelectionGenerationResult(0, 0L, Map.of());
