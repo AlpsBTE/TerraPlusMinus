@@ -1,0 +1,14 @@
+[
+  // Add building outline datasets (LoD0 footprints) here.
+  //
+  // {
+  //   "id": "swiss_tlm3d",
+  //   "enabled": true,
+  //   "priority": 100,
+  //   "bounds": { "minX": 5.9, "maxX": 10.5, "minZ": 45.8, "maxZ": 47.85 },
+  //   "path": "swiss_buildings",
+  //   "tileSizeDegrees": 0.03125,
+  //   "outlineMaterial": "minecraft:stone_bricks",
+  //   "interiorMaterial": "minecraft:clay"
+  // }
+]

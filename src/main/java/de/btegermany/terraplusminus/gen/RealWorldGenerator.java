@@ -3,14 +3,23 @@ package de.btegermany.terraplusminus.gen;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.LoadingCache;
 import de.btegermany.terraplusminus.Terraplusminus;
+import de.btegermany.terraplusminus.gen.building.config.BuildingDatasetConfigLoader;
+import de.btegermany.terraplusminus.gen.building.config.BuildingOutlineConfig;
+import de.btegermany.terraplusminus.gen.building.outline.BuildingOutlineBaker;
+import de.btegermany.terraplusminus.gen.building.outline.BuildingOutlineDataset;
+import de.btegermany.terraplusminus.gen.building.outline.MultiBuildingOutlineDataset;
 import de.btegermany.terraplusminus.gen.tree.TreePopulator;
 import de.btegermany.terraplusminus.utils.Properties;
 import lombok.Getter;
 import net.buildtheearth.terraminusminus.generator.CachedChunkData;
 import net.buildtheearth.terraminusminus.generator.ChunkDataLoader;
+import net.buildtheearth.terraminusminus.generator.EarthGeneratorPipelines;
 import net.buildtheearth.terraminusminus.generator.EarthGeneratorSettings;
+import net.buildtheearth.terraminusminus.generator.GeneratorDatasets;
+import net.buildtheearth.terraminusminus.generator.data.IEarthDataBaker;
 import net.buildtheearth.terraminusminus.projection.GeographicProjection;
 import net.buildtheearth.terraminusminus.projection.transform.OffsetProjectionTransform;
+import net.buildtheearth.terraminusminus.substitutes.BlockState;
 import net.buildtheearth.terraminusminus.substitutes.ChunkPos;
 import net.buildtheearth.terraminusminus.util.http.Http;
 import org.bukkit.HeightMap;
@@ -27,10 +36,7 @@ import org.bukkit.generator.WorldInfo;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -53,6 +59,8 @@ public class RealWorldGenerator extends ChunkGenerator {
     private final EarthGeneratorSettings settings;
     @Getter
     private final int yOffset;
+    @Getter
+    private final GeneratorDatasets datasets;
 
     private final LoadingCache<@NonNull ChunkPos, @NonNull CompletableFuture<CachedChunkData>> cache;
     private final CustomBiomeProvider customBiomeProvider;
@@ -98,10 +106,48 @@ public class RealWorldGenerator extends ChunkGenerator {
         this.settings = settings.withProjection(projection);
 
         this.customBiomeProvider = new CustomBiomeProvider(projection);
+
+        // Build datasets and bakers
+        Map<String, Object> datasetsMap = new HashMap<>(EarthGeneratorPipelines.datasets(this.settings));
+        List<IEarthDataBaker<?>> bakerList = new ArrayList<>(
+                Arrays.asList(EarthGeneratorPipelines.dataBakers(this.settings))
+        );
+
+        List<MultiBuildingOutlineDataset.Entry> buildingOutlineEntries = new ArrayList<>();
+        for (BuildingOutlineConfig config : BuildingDatasetConfigLoader.loadOutlines(plugin)) {
+            if (!config.enabled()) continue;
+            if (!java.nio.file.Files.exists(config.path())) {
+                plugin.getComponentLogger().warn("Building outline dataset '{}' is enabled but directory '{}' does not exist.", config.id(), config.path());
+                continue;
+            }
+            BlockState outlineBlock = BlockState.parse(config.outlineMaterial());
+            BlockState interiorBlock = BlockState.parse(config.interiorMaterial());
+            buildingOutlineEntries.add(new MultiBuildingOutlineDataset.Entry(
+                    config,
+                    new BuildingOutlineDataset(
+                            config.id(),
+                            config.path(),
+                            config.tileSizeDegrees(),
+                            config.priority(),
+                            outlineBlock,
+                            interiorBlock,
+                            this.settings.projection()
+                    )
+            ));
+            plugin.getComponentLogger().info("Building outline dataset enabled: {} ({})", config.id(), config.path());
+        }
+        if (!buildingOutlineEntries.isEmpty()) {
+            datasetsMap.put(MultiBuildingOutlineDataset.KEY, new MultiBuildingOutlineDataset(buildingOutlineEntries));
+            bakerList.add(new BuildingOutlineBaker());
+        }
+
+        this.datasets = new GeneratorDatasets(datasetsMap, this.settings.projection());
+
         this.cache = CacheBuilder.newBuilder()
                 .expireAfterAccess(5L, TimeUnit.MINUTES)
                 .softValues()
-                .build(new ChunkDataLoader(this.settings));
+                .maximumSize(256)
+                .build(new ChunkDataLoader(this.datasets, bakerList.toArray(new IEarthDataBaker[0])));
 
         // This code is explicitly there for backward compatibility and is legitimate in using the deprecated config keys
         this.blockMapper = BlockMapper.fromPlugin(plugin)
