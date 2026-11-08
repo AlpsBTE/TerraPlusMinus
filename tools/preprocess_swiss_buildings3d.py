@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Preprocess SwissBuildings3D GDB tiles into JSONL for TerraPlusMinus.
+"""Preprocess SwissBuildings3D GDB tiles into JSONL for TerraPlusMinus.
 
 Usage:
     python preprocess_swiss_buildings3d.py <input_dir> <output_dir>
@@ -24,8 +23,6 @@ with elevation in meters.
 """
 
 import json
-import math
-import os
 import sys
 from pathlib import Path
 

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Preprocess Swiss TLM3D building footprints into tiled GeoJSONSeq for TerraPlusMinus.
+"""Preprocess Swiss TLM3D building footprints into tiled GeoJSONSeq for TerraPlusMinus.
 
 Usage:
     python preprocess_swiss_buildings.py <input.gpkg|input.gdb|input.geojson> <output_dir>
@@ -17,7 +16,6 @@ The script reprojects to WGS84 (EPSG:4326) automatically if needed.
 
 import json
 import math
-import os
 import sys
 from pathlib import Path
 

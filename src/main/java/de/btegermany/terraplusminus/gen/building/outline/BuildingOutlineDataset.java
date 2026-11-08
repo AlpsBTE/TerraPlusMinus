@@ -98,12 +98,7 @@ public class BuildingOutlineDataset extends TiledDataset<BVH<VectorGeometry>> im
         Bounds2d localBounds = bounds.fromGeo(this.projection).axisAlign();
         ChunkPos[] tiles = localBounds.toTiles(this.tileSize);
 
-        boolean anyTileExists = false;
-        for (ChunkPos tile : tiles) {
-            if (!Files.exists(this.tileFile(tile))) continue;
-            anyTileExists = true;
-            break;
-        }
+        boolean anyTileExists = Arrays.stream(tiles).anyMatch(tile -> Files.exists(this.tileFile(tile)));
         if (!anyTileExists) return CompletableFuture.completedFuture(null);
 
         CompletableFuture<BVH<VectorGeometry>>[] futures = uncheckedCast(Arrays.stream(tiles).map(this::getAsync).toArray(CompletableFuture[]::new));

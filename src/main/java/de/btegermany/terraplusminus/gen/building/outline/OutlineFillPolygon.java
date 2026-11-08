@@ -22,6 +22,9 @@ import net.buildtheearth.terraminusminus.util.interval.IntervalTree;
 import net.daporkchop.lib.common.math.PMath;
 
 public final class OutlineFillPolygon implements VectorGeometry {
+    /** One initial scanline sample plus up to three jittered retries. */
+    private static final int MAX_SCANLINE_ATTEMPTS = 4;
+
     private final String id;
     private final double layer;
     private final IntervalTree<Segment> segments;
@@ -113,26 +116,23 @@ public final class OutlineFillPolygon implements VectorGeometry {
     }
 
     private double[] getIntersectionPoints(int pos) {
-        int retries = 0;
         double offset = 0.5d;
-        do {
+        for (int attempt = 0; attempt < MAX_SCANLINE_ATTEMPTS; attempt++) {
             double center = pos + offset;
             List<Segment> segs = this.segments.getAllIntersecting(center);
-            if ((segs.size() & 1) != 0) {
-                offset = 0.45d + ThreadLocalRandom.current().nextDouble() * 0.1d;
-                continue;
-            }
-
             int size = segs.size();
-            if (size == 0) return TerraConstants.EMPTY_DOUBLE_ARRAY;
-            double[] arr = new double[size];
-            int i = 0;
-            for (Segment s : segs) {
-                arr[i++] = PMath.lerp(s.z0(), s.z1(), (s.x0() - center) / (s.x0() - s.x1()));
+            if ((size & 1) == 0) {
+                if (size == 0) return TerraConstants.EMPTY_DOUBLE_ARRAY;
+                double[] arr = new double[size];
+                int i = 0;
+                for (Segment s : segs) {
+                    arr[i++] = PMath.lerp(s.z0(), s.z1(), (s.x0() - center) / (s.x0() - s.x1()));
+                }
+                Arrays.sort(arr);
+                return arr;
             }
-            Arrays.sort(arr);
-            return arr;
-        } while (retries++ < 3);
+            offset = 0.45d + ThreadLocalRandom.current().nextDouble() * 0.1d;
+        }
         return TerraConstants.EMPTY_DOUBLE_ARRAY;
     }
 
