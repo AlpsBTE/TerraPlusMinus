@@ -10,5 +10,8 @@ Each pixel holds the tree height in metres (= blocks).
 - **0:** no tree grows here, even if the tree cover says there is one. Use it where nothing reaches tree height.
 - **No value** (transparent pixel, missing tile, outside the `bounds`): any template of the tree type.
 
+How to make a dataset from your own data (laser scan, forest maps, Copernicus), with a helper script:
+[Creating your own tree datasets](https://github.com/AlpsBTE/TerraPlusMinus/blob/master/docs/tree-datasets.md).
+
 For more on the format, you can refer to the
 [Terra++ wiki](https://github.com/BuildTheEarth/terraplusplus/wiki/Custom-terrain-dataset-guide).
