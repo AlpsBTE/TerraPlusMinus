@@ -144,3 +144,6 @@ gradle-app.setting
 
 # End of https://www.toptal.com/developers/gitignore/api/gradle
 
+
+# Python
+__pycache__/

@@ -6,22 +6,25 @@ import io.papermc.paper.registry.RegistryAccess;
 import io.papermc.paper.registry.RegistryKey;
 import net.buildtheearth.terraminusminus.projection.GeographicProjection;
 import net.buildtheearth.terraminusminus.projection.OutOfProjectionBoundsException;
+import net.kyori.adventure.key.InvalidKeyException;
 import net.kyori.adventure.key.Key;
 import org.bukkit.block.Biome;
 import org.bukkit.generator.BiomeProvider;
 import org.bukkit.generator.WorldInfo;
+import org.intellij.lang.annotations.Subst;
 import org.jspecify.annotations.NonNull;
+import org.jspecify.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutionException;
 
 
 public class CustomBiomeProvider extends BiomeProvider {
 
     private final KoppenClimateData climateData = new KoppenClimateData();
-    double biomeData;
 
     public static List<Biome> biomeList = new ArrayList<>(Arrays.asList(Biome.OCEAN, Biome.JUNGLE, Biome.BAMBOO_JUNGLE, Biome.SPARSE_JUNGLE, Biome.SAVANNA, Biome.DESERT, Biome.PLAINS, Biome.SUNFLOWER_PLAINS, Biome.BEACH, Biome.WINDSWEPT_GRAVELLY_HILLS,
             Biome.FLOWER_FOREST, Biome.STONY_PEAKS, Biome.SAVANNA_PLATEAU, Biome.WOODED_BADLANDS, Biome.SNOWY_TAIGA, Biome.OLD_GROWTH_SPRUCE_TAIGA, Biome.SWAMP, Biome.OLD_GROWTH_PINE_TAIGA, Biome.FOREST, Biome.DARK_FOREST,
@@ -44,8 +47,7 @@ public class CustomBiomeProvider extends BiomeProvider {
                 return Biome.PLAINS;
             }
             try {
-                biomeData = this.climateData.getAsync(coords[0], coords[1]).get();
-                return koppenDataToBukkitBiome(biomeData);
+                return koppenDataToBukkitBiome(this.climateData.getAsync(coords[0], coords[1]).get());
             } catch (OutOfProjectionBoundsException silenced) {
                 // This is not an issue,
                 // we can't be expected to supply a realistic biome for a place that does not exist on Earth
@@ -57,12 +59,8 @@ public class CustomBiomeProvider extends BiomeProvider {
                         e
                 );
             }
-        } else biomeData = 8; // Default is plains for tree generation
+        }
         return parseDefaultBiome();
-    }
-
-    public double getBiome() {
-        return biomeData;
     }
 
     @NonNull
@@ -90,9 +88,6 @@ public class CustomBiomeProvider extends BiomeProvider {
             }
             case 6 -> {
                 return Biome.SAVANNA;
-            }
-            case 8 -> {
-                return Biome.PLAINS;
             }
             case 9 -> {
                 return Biome.SUNFLOWER_PLAINS;
@@ -152,19 +147,27 @@ public class CustomBiomeProvider extends BiomeProvider {
     }
 
     public static Biome parseDefaultBiome() {
-        final String FALLBACK_BIOME = "minecraft:plains";
-
         String biomeName = Terraplusminus.config.getString("biomes.biome");
         if (biomeName == null || biomeName.isBlank()) {
-            biomeName = FALLBACK_BIOME;
-        } else {
-            biomeName = biomeName.toLowerCase();
-            if (!biomeName.contains(":")) {
-                biomeName = "minecraft:" + biomeName;
-            }
+            biomeName = "minecraft:plains";
         }
+        return parseBiome(biomeName);
+    }
 
-        var biomeRegistry = RegistryAccess.registryAccess().getRegistry(RegistryKey.BIOME);
-        return biomeRegistry.get(Key.key(biomeName));
+    /**
+     * @param name biome name like {@code plains} or {@code minecraft:plains}, any case
+     * @return the biome, or {@code null} if there is no biome with that name
+     */
+    public static @Nullable Biome parseBiome(@NonNull String name) {
+        @Subst("minecraft:plains")
+        String id = name.toLowerCase(Locale.ROOT);
+        if (!id.contains(":")) {
+            id = "minecraft:" + id;
+        }
+        try {
+            return RegistryAccess.registryAccess().getRegistry(RegistryKey.BIOME).get(Key.key(id));
+        } catch (InvalidKeyException e) {
+            return null;
+        }
     }
 }

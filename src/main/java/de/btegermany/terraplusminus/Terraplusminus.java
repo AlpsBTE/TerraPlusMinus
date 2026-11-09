@@ -9,6 +9,7 @@ import de.btegermany.terraplusminus.events.PlayerJoinEvent;
 import de.btegermany.terraplusminus.events.PlayerMoveEvent;
 import de.btegermany.terraplusminus.events.PluginMessageEvent;
 import de.btegermany.terraplusminus.gen.RealWorldGenerator;
+import de.btegermany.terraplusminus.gen.tree.TreePopulator;
 import de.btegermany.terraplusminus.utils.*;
 import io.papermc.paper.command.brigadier.Commands;
 import io.papermc.paper.plugin.configuration.PluginMeta;
@@ -80,6 +81,9 @@ public final class Terraplusminus extends JavaPlugin implements Listener {
         this.extractTerraConfigFileToPluginDir("/net/buildtheearth/terraminusminus/dataset/osm/osm.json5", "osm.json5");
         this.extractTerraConfigFileToPluginDir("config/readme-heights.md", "heights/README.md");
         this.extractTerraConfigFileToPluginDir("config/readme-tree_cover.md", "tree_cover/README.md");
+        this.extractTerraConfigFileToPluginDir("config/readme-tree_leaf_type.md", TreePopulator.TREE_LEAF_TYPE_DATASET + "/README.md");
+        this.extractTerraConfigFileToPluginDir("config/readme-tree_height.md", TreePopulator.TREE_HEIGHT_DATASET + "/README.md");
+        this.extractTerraConfigFileToPluginDir("config/tree_rules.json5", TreePopulator.TREE_RULES_FILE);
 
         // Register plugin messaging channel
         PlayerHashMapManagement playerHashMapManagement = new PlayerHashMapManagement();
