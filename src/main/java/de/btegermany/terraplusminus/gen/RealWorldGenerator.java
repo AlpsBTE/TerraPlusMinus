@@ -324,6 +324,8 @@ public class RealWorldGenerator extends ChunkGenerator {
                     continue; // We are not within vertical bounds, continue
                 }
 
+                boolean cutOff = groundY >= maxWorldY;
+
                 int blockX = baseBlockX + x;
                 int blockZ = baseBlockZ + z;
 
@@ -339,9 +341,25 @@ public class RealWorldGenerator extends ChunkGenerator {
                     double slopeAngle = Slope.angleDegrees(neighborhood, blockX, blockZ, slopeRadius);
                     SurfacePattern pattern = this.surfacePatternResolver.resolve(irlHeight, slopeAngle, landCover, edgeDistance, blockX, topY, blockZ).orElse(null);
                     if (pattern != null) {
-                        surfaceBlock = this.applyStrata(chunkData, pattern, x, topY, groundY, z, blockX, blockZ, minWorldY);
+                        if (cutOff) {
+                            // Only the strata that reach down to the cut, everything else stays the base block
+                            this.applyStrata(chunkData, pattern, x, topY, groundY, z, blockX, blockZ, minWorldY);
+                        } else {
+                            surfaceBlock = this.pickStratumBlock(pattern.stratumAt(0), blockX, topY, blockZ);
+                            this.applyStrata(chunkData, pattern, x, topY - 1, groundY, z, blockX, blockZ, minWorldY);
+                        }
                     }
                 }
+
+                if (cutOff) {
+                    // No surface block: the column keeps going exactly like the world above generates it, so the
+                    // transition is seamless. The top layer can still be exposed on the column's flank.
+                    if (patternsEnabled) {
+                        this.applyCliffFaces(chunkData, neighborhood, slopeRadius, x, maxWorldY, groundY, z, blockX, blockZ, minWorldY, maxWorldY, landCover, edgeDistance);
+                    }
+                    continue;
+                }
+
                 if (surfaceBlock == null) {
                     if (groundY >= startMountainHeight) {
                         surfaceBlock = this.mountainSurfaceBlock; // Mountains stay bare
@@ -353,7 +371,10 @@ public class RealWorldGenerator extends ChunkGenerator {
                 }
 
                 // We don't want grass, snow, and all that underwater
-                boolean isUnderWater = topY + 1 >= maxWorldY || chunkData.getBlockData(x, topY + 1, z).getMaterial().equals(WATER);
+                // On the world's top layer, the block above lies outside this world, so ask the dataset instead
+                boolean isUnderWater = topY + 1 < maxWorldY
+                        ? chunkData.getBlockData(x, topY + 1, z).getMaterial().equals(WATER)
+                        : terraData.waterHeight(x, z) > terraData.groundHeight(x, z);
                 if (isUnderWater && GRASS_LIKE_MATERIALS.contains(surfaceBlock.getMaterial())) {
                     surfaceBlock = this.underwaterBlock;
                 }
@@ -434,17 +455,19 @@ public class RealWorldGenerator extends ChunkGenerator {
         return layers;
     }
 
-    private @Nullable BlockData applyStrata(
+    /**
+     * Places the pattern's finite strata from {@code fromY} downwards, each at its depth below the column's surface
+     * at {@code groundY}. Below the strata the column keeps its base block.
+     */
+    private void applyStrata(
             @NonNull ChunkData chunkData, @NonNull SurfacePattern pattern,
-            int x, int topY, int groundY, int z, int blockX, int blockZ, int minWorldY
+            int x, int fromY, int groundY, int z, int blockX, int blockZ, int minWorldY
     ) {
-        BlockData surfaceBlock = this.pickStratumBlock(pattern.stratumAt(groundY - topY), blockX, topY, blockZ);
-        for (int y = topY - 1; y >= minWorldY; y--) {
+        for (int y = fromY; y >= minWorldY; y--) {
             SurfacePattern.Stratum stratum = pattern.finiteStratumAt(groundY - y);
             if (stratum == null) break;
             chunkData.setBlock(x, y, z, Objects.requireNonNull(this.pickStratumBlock(stratum, blockX, y, blockZ)));
         }
-        return surfaceBlock;
     }
 
     /**
@@ -453,10 +476,13 @@ public class RealWorldGenerator extends ChunkGenerator {
      * <p>
      * Each exposed block is resolved on its own, by its real-world height and the steepest terrain angle among the
      * directions that expose it, and shows the stratum revealed at its depth below the column's surface.
+     *
+     * @param flankTopY the first height above the flank (exclusive): the column's surface block, or the world's
+     *                  build limit when the column is cut off by it
      */
     private void applyCliffFaces(
             @NonNull ChunkData chunkData, @NonNull ChunkNeighborhood neighborhood,
-            int slopeRadius, int x, int topY, int groundY, int z,
+            int slopeRadius, int x, int flankTopY, int groundY, int z,
             int blockX, int blockZ, int minWorldY, int maxWorldY, LandCoverType landCover, int edgeDistance
     ) {
         int neighborMinusX = neighborhood.height(blockX - 1, blockZ) + this.yOffset;
@@ -464,7 +490,7 @@ public class RealWorldGenerator extends ChunkGenerator {
         int neighborMinusZ = neighborhood.height(blockX, blockZ - 1) + this.yOffset;
         int neighborPlusZ = neighborhood.height(blockX, blockZ + 1) + this.yOffset;
         int minNeighborY = min(min(neighborMinusX, neighborPlusX), min(neighborMinusZ, neighborPlusZ));
-        if (minNeighborY >= topY - 1) {
+        if (minNeighborY >= flankTopY - 1) {
             return; // no block below the surface is exposed on the flank
         }
 
@@ -474,7 +500,7 @@ public class RealWorldGenerator extends ChunkGenerator {
         double angleMinusZ = Slope.angleDegreesToward(neighborhood, blockX, blockZ, 0, -1, slopeRadius);
         double anglePlusZ = Slope.angleDegreesToward(neighborhood, blockX, blockZ, 0, 1, slopeRadius);
 
-        for (int y = max(minNeighborY + 1, minWorldY); y < topY; y++) {
+        for (int y = max(minNeighborY + 1, minWorldY); y < flankTopY; y++) {
             // The steepest angle among the directions that expose this block
             double faceAngle = 0.0;
             if (neighborMinusX < y) {
@@ -501,7 +527,8 @@ public class RealWorldGenerator extends ChunkGenerator {
             BlockData block = this.pickStratumBlock(stratum, blockX, y, blockZ);
 
             // We don't want grass, snow, and all that underwater
-            boolean isUnderWater = y + 1 >= maxWorldY || chunkData.getBlockData(x, y + 1, z).getMaterial().equals(WATER);
+            // Above the build limit, the column itself continues in the world above, so it is not underwater
+            boolean isUnderWater = y + 1 < maxWorldY && chunkData.getBlockData(x, y + 1, z).getMaterial().equals(WATER);
             if (isUnderWater && GRASS_LIKE_MATERIALS.contains(block.getMaterial())) {
                 block = this.underwaterBlock;
             }
