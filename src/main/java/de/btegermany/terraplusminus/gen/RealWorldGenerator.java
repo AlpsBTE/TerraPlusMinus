@@ -16,12 +16,28 @@ import de.btegermany.terraplusminus.gen.landcover.LandCoverType;
 import de.btegermany.terraplusminus.gen.landcover.MultiLandCoverDataset;
 import de.btegermany.terraplusminus.gen.landcover.OsmLandCoverDataset;
 import de.btegermany.terraplusminus.gen.landcover.VectorLandCoverDataset;
+import de.btegermany.terraplusminus.gen.road.CoverageFilteringOsmMapper;
+import de.btegermany.terraplusminus.gen.road.MultiRoadSurfaceDataset;
+import de.btegermany.terraplusminus.gen.road.RoadCoverage;
+import de.btegermany.terraplusminus.gen.road.RoadMaterialResolver;
+import de.btegermany.terraplusminus.gen.road.RoadSurfaceBaker;
+import de.btegermany.terraplusminus.gen.road.RoadSurfaceConfig;
+import de.btegermany.terraplusminus.gen.road.RoadSurfaceConfigLoader;
+import de.btegermany.terraplusminus.gen.road.RoadSurfaceDataset;
 import de.btegermany.terraplusminus.gen.snow.Aspect;
 import de.btegermany.terraplusminus.gen.snow.SnowModel;
 import de.btegermany.terraplusminus.gen.surface.*;
 import de.btegermany.terraplusminus.gen.tree.TreePopulator;
 import de.btegermany.terraplusminus.utils.Properties;
 import lombok.Getter;
+import net.buildtheearth.terraminusminus.TerraConfig;
+import net.buildtheearth.terraminusminus.dataset.geojson.Geometry;
+import net.buildtheearth.terraminusminus.dataset.geojson.dataset.ParsingGeoJsonDataset;
+import net.buildtheearth.terraminusminus.dataset.geojson.dataset.ReferenceResolvingGeoJsonDataset;
+import net.buildtheearth.terraminusminus.dataset.geojson.dataset.TiledGeoJsonDataset;
+import net.buildtheearth.terraminusminus.dataset.osm.OSMMapper;
+import net.buildtheearth.terraminusminus.dataset.vector.GeoJsonToVectorDataset;
+import net.buildtheearth.terraminusminus.dataset.vector.VectorTiledDataset;
 import net.buildtheearth.terraminusminus.generator.CachedChunkData;
 import net.buildtheearth.terraminusminus.generator.ChunkDataLoader;
 import net.buildtheearth.terraminusminus.generator.EarthGeneratorPipelines;
@@ -142,6 +158,9 @@ public class RealWorldGenerator extends ChunkGenerator {
                 Arrays.asList(EarthGeneratorPipelines.dataBakers(this.settings))
         );
 
+        // Road surfaces must be baked after OSM (to replace its roads) and before building outlines
+        this.setupRoadSurfaces(plugin, datasetsMap, bakerList);
+
         List<MultiBuildingOutlineDataset.Entry> buildingOutlineEntries = new ArrayList<>();
         for (BuildingOutlineConfig config : BuildingDatasetConfigLoader.loadOutlines(plugin)) {
             if (!config.enabled()) continue;
@@ -256,6 +275,33 @@ public class RealWorldGenerator extends ChunkGenerator {
         }
     }
 
+    private void setupRoadSurfaces(
+            @NonNull Terraplusminus plugin,
+            @NonNull Map<String, Object> datasetsMap,
+            @NonNull List<IEarthDataBaker<?>> bakerList
+    ) {
+        RoadSurfaceConfig config = RoadSurfaceConfigLoader.load(plugin);
+        if (!config.isActive()) return;
+
+        RoadMaterialResolver materials = new RoadMaterialResolver(config.materials());
+        List<RoadSurfaceDataset> datasets = new ArrayList<>();
+        for (RoadSurfaceConfig.DatasetConfig datasetConfig : config.datasets()) {
+            datasets.add(new RoadSurfaceDataset(datasetConfig, materials, this.settings.projection()));
+            plugin.getComponentLogger().info("Road surface dataset enabled: {} ({})", datasetConfig.id(), datasetConfig.path());
+        }
+        MultiRoadSurfaceDataset roadSurfaces = new MultiRoadSurfaceDataset(datasets);
+        datasetsMap.put(MultiRoadSurfaceDataset.KEY, roadSurfaces);
+        bakerList.add(new RoadSurfaceBaker(roadSurfaces));
+
+        RoadCoverage coverage = RoadCoverage.load(config.datasets(), this.settings.projection(), plugin.getComponentLogger());
+        if (!coverage.isEmpty()) {
+            // Same construction as EarthGeneratorPipelines.datasets(), sharing one raw OSM dataset between both keys
+            ParsingGeoJsonDataset rawOsm = new ParsingGeoJsonDataset(TerraConfig.openstreetmap.servers);
+            OSMMapper<Geometry> mapper = new CoverageFilteringOsmMapper(OSMMapper.load(), coverage);
+            datasetsMap.put(EarthGeneratorPipelines.KEY_DATASET_OSM_RAW, new TiledGeoJsonDataset(new ReferenceResolvingGeoJsonDataset(rawOsm)));
+            datasetsMap.put(EarthGeneratorPipelines.KEY_DATASET_OSM_PARSED, new VectorTiledDataset(new GeoJsonToVectorDataset(rawOsm, mapper, this.settings.projection())));
+        }
+    }
 
     @Override
     public void generateNoise(@NonNull WorldInfo worldInfo, @NonNull Random random, int chunkX, int chunkZ, @NonNull ChunkData chunkData) {

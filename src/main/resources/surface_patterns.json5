@@ -45,7 +45,7 @@
  *    identical across restarts, and across linked worlds with the same x/z offsets.
  *    Give patterns distinct names to get distinct noise patches.
  *
- *  - OSM data (roads, paths) and building outlines always have priority over surface
+ *  - OSM data (roads, paths), road surfaces (road_surfaces.json5) and building outlines always have priority over surface
  *    patterns on the blocks they occupy; cliff faces below those blocks are still
  *    painted. LoD building shells are placed independently and are never touched.
  *

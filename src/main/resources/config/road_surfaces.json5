@@ -1,0 +1,165 @@
+/*
+ * TERRA+- ROAD SURFACES
+ *
+ * Paints real road surface shapes (roadways, sidewalks, traffic islands, parking lots, other paved
+ * areas and paths) from preprocessed datasets, instead of estimating road widths from OSM centrelines.
+ *
+ * This file is extracted into the plugin folder on the first server start. It is read once when the
+ * world generator is created, so changes require a server restart.
+ *
+ * DATASETS
+ *
+ *  Datasets are produced offline by the preprocessing scripts in the plugin repository's "tools/roads"
+ *  folder (see tools/roads/FORMAT.md). Each dataset is a directory below the plugin folder:
+ *
+ *      <path>/tile/<x>/<z>.json GeoJSONSeq tiles, one polygon feature per line
+ *      <path>/coverage.geojson optional: the area in which the dataset is authoritative
+ *
+ *  Each feature has a "kind" (roadway, sidewalk, traffic_island, parking, paved_area, path) and optionally
+ *  a road "class" (OSM highway values: motorway, trunk, primary, ..., track, path, footway, ...) and a
+ *  "surface" (paved, unpaved).
+ *
+ *  Dataset fields:
+ *    "id"                 required, unique name; material rules can be limited to a dataset by it
+ *    "enabled"            optional, defaults to true
+ *    "priority"           optional, defaults to 0; where datasets overlap, the higher priority wins.
+ *                         Within one dataset, overlapping kinds are painted in this order (top first):
+ *                         traffic_island, sidewalk, roadway, parking, paved_area, path
+ *    "path"               required, the dataset directory, relative to the plugin folder
+ *    "bounds"             required, the dataset's extent in degrees (minX/maxX = longitude, minZ/maxZ = latitude)
+ *    "tile_size_degrees"  optional, defaults to 0.03125 (1/32 degree), must match the preprocessing
+ *    "replace_osm_roads"  optional, defaults to true: OSM roads (highway=*) inside the dataset's coverage
+ *                         are not generated. The coverage is read from coverage.geojson, or the "bounds"
+ *                         are used if that file does not exist.
+ *    "keep_osm_highways"  optional, OSM highway values that are still generated from OSM inside the
+ *                         coverage, e.g. narrow footpaths that the dataset does not contain
+ *
+ * MATERIALS
+ *
+ *  Each road surface polygon is painted with the block mix of the matching material rule with the highest
+ *  priority (ties: the first one in this list). A rule matches when every filter it sets contains the
+ *  polygon's value; omitted filters match everything. Polygons that no rule matches are not painted.
+ *
+ *  Material fields:
+ *    "name"      required, used in log messages and to derive the mix seed
+ *    "priority"  optional, defaults to 0
+ *    "kind"      optional, list of kinds
+ *    "class"     optional, list of road classes; never matches polygons without a class
+ *    "surface"   optional, list of surfaces ("paved", "unpaved"); never matches polygons without a surface
+ *    "dataset"   optional, list of dataset ids
+ *    "mix"       required, the weighted block mix, same as a surface pattern stratum:
+ *                  "blocks"       required, list of { "block": "namespace:id[props]", "weight": 1 }
+ *                  "mode"         optional, "random" (speckle, default) or "noise" (coherent patches)
+ *                  "noise_scale"  optional, patch size in blocks for "noise" (default 64)
+ *
+ *  Road surfaces have the same priority as OSM roads: surface patterns and snow never paint over them,
+ *  and no trees are placed on them. Building outlines are painted on top of road surfaces.
+ */
+{
+    // Master switch for road surfaces
+    "enabled": true,
+
+    "datasets": [
+        // {
+        //   "id": "ch_av",
+        //   "enabled": true,
+        //   "priority": 100,
+        //   "path": "roads/ch_av",
+        //   "bounds": { "minX": 5.9, "maxX": 10.6, "minZ": 45.8, "maxZ": 47.9 },
+        //   "tile_size_degrees": 0.03125,
+        //   "replace_osm_roads": true,
+        //   "keep_osm_highways": ["path", "footway", "steps", "bridleway"]
+        // }
+    ],
+
+    "materials": [
+        {
+            // Fallback for every roadway without a more specific rule
+            "name": "street",
+            "kind": ["roadway"],
+            "mix": { "blocks": [ { "block": "minecraft:gray_concrete", "weight": 9 },
+                                 { "block": "minecraft:gray_concrete_powder", "weight": 1 } ] }
+        },
+        {
+            "name": "highway",
+            "priority": 20,
+            "kind": ["roadway"],
+            "class": ["motorway", "motorway_link", "trunk", "trunk_link"],
+            "mix": { "blocks": [ { "block": "minecraft:gray_concrete", "weight": 7 },
+                                 { "block": "minecraft:light_gray_concrete", "weight": 1 },
+                                 { "block": "minecraft:andesite", "weight": 2 } ] }
+        },
+        {
+            "name": "main_road",
+            "priority": 10,
+            "kind": ["roadway"],
+            "class": ["primary", "primary_link", "secondary", "secondary_link"],
+            "mix": { "blocks": [ { "block": "minecraft:gray_concrete", "weight": 8 },
+                                 { "block": "minecraft:andesite", "weight": 2 } ] }
+        },
+        {
+            // Dirt and gravel roads: farm and forest tracks, or anything marked as unpaved
+            "name": "dirt_road",
+            "priority": 30,
+            "kind": ["roadway", "path", "parking", "paved_area"],
+            "surface": ["unpaved"],
+            "mix": { "blocks": [ { "block": "minecraft:coarse_dirt", "weight": 5 },
+                                 { "block": "minecraft:gravel", "weight": 3 },
+                                 { "block": "minecraft:dirt_path", "weight": 2 } ],
+                     "mode": "noise",
+                     "noise_scale": 6 }
+        },
+        {
+            "name": "track",
+            "priority": 25,
+            "kind": ["roadway"],
+            "class": ["track"],
+            "mix": { "blocks": [ { "block": "minecraft:coarse_dirt", "weight": 5 },
+                                 { "block": "minecraft:gravel", "weight": 3 },
+                                 { "block": "minecraft:dirt_path", "weight": 2 } ],
+                     "mode": "noise",
+                     "noise_scale": 6 }
+        },
+        {
+            "name": "sidewalk",
+            "kind": ["sidewalk"],
+            "mix": { "blocks": [ { "block": "minecraft:light_gray_concrete", "weight": 8 },
+                                 { "block": "minecraft:stone", "weight": 2 } ] }
+        },
+        {
+            "name": "traffic_island",
+            "kind": ["traffic_island"],
+            "mix": { "blocks": [ { "block": "minecraft:smooth_stone" } ] }
+        },
+        {
+            "name": "parking",
+            "kind": ["parking"],
+            "mix": { "blocks": [ { "block": "minecraft:gray_concrete", "weight": 6 },
+                                 { "block": "minecraft:light_gray_concrete", "weight": 2 },
+                                 { "block": "minecraft:andesite", "weight": 2 } ] }
+        },
+        {
+            // Plazas, courtyards, driveways and other paved areas
+            "name": "paved_area",
+            "kind": ["paved_area"],
+            "mix": { "blocks": [ { "block": "minecraft:stone", "weight": 5 },
+                                 { "block": "minecraft:andesite", "weight": 3 },
+                                 { "block": "minecraft:light_gray_concrete", "weight": 2 } ] }
+        },
+        {
+            "name": "path",
+            "kind": ["path"],
+            "mix": { "blocks": [ { "block": "minecraft:dirt_path", "weight": 7 },
+                                 { "block": "minecraft:coarse_dirt", "weight": 3 } ] }
+        },
+        {
+            // Paved footpaths and cycleways
+            "name": "paved_path",
+            "priority": 5,
+            "kind": ["path"],
+            "surface": ["paved"],
+            "mix": { "blocks": [ { "block": "minecraft:light_gray_concrete", "weight": 8 },
+                                 { "block": "minecraft:stone", "weight": 2 } ] }
+        }
+    ]
+}
